@@ -147,8 +147,15 @@ td.hol { background: var(--paper-hol); color: #4b5560; font-size: 13px; font-wei
 .r-note .ed { font-size: 10.5px; padding: 1px 4px; color: var(--paper-sub); }
 td.todo { background: #fcfdfe; }
 td.todo .ed { font-size: 12px; min-height: 100px; display: flex; align-items: center; justify-content: center; text-align: center; }
-.boxed { margin: 4px 6px; border: 1.5px solid var(--paper-rule); border-radius: 6px; padding: 4px; min-height: 36px; display: flex; align-items: center; justify-content: center; }
-.boxed .ed { padding: 0; text-align: center; font-weight: 700; }
+.alt-line { font: 10px var(--font-ui); color: #7a5c00; background: #fff7d6; border-top: 1px dashed #e6d38a; padding: 1px 4px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 10px 2px 0; font: 12px var(--font-ui); color: var(--paper-sub); }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(0,0,0,.15); vertical-align: -2px; margin-right: 5px; }
+.legend b { color: var(--paper-ink); font-weight: 600; }
+.hours { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 10px 2px 0; }
+.hours .lbl { font: 700 12px var(--font-ui); color: var(--paper-sub); margin-right: 4px; }
+.hchip { display: inline-flex; gap: 5px; align-items: baseline; border-radius: 999px; padding: 2px 9px; font: 700 12px var(--font-doc); border: 1px solid rgba(0,0,0,.1); }
+.hchip b { font-variant-numeric: tabular-nums; }
+.hchip.total { background: var(--paper-head-ink); color: #fff; border-color: transparent; }
 .drag-tip { font: 12px var(--font-ui); color: var(--paper-sub); margin: 8px 2px 0; }
 
 /* 하단: 학생 명단 + MEMO */
@@ -161,16 +168,22 @@ table.roster tr > :last-child { border-right: 0; }
 table.roster tbody tr:last-child > * { border-bottom: 0; }
 table.roster thead th { border-top: 0; border-bottom: 1.5px solid var(--paper-rule); font-weight: 800; font-size: 12px; background: var(--paper-head); color: var(--paper-head-ink); height: 30px; }
 table.roster thead .ed { font-weight: 800; color: var(--paper-head-ink); text-align: center; font-size: 12px; min-height: 29px; display: flex; align-items: center; justify-content: center; }
-table.roster col.c-no { width: 34px; } table.roster col.c-name { width: 72px; } table.roster col.c-att { width: 30%; }
+table.roster col.c-no { width: 34px; } table.roster col.c-name { width: 72px; } table.roster col.c-att { width: 21%; }
 table.roster td.no { font-variant-numeric: tabular-nums; color: var(--paper-sub); background: var(--paper-lab); }
 table.roster td.nm { font-weight: 700; }
 table.roster tbody tr:nth-child(5n) > * { border-bottom-color: #9fabb7; }
+table.roster thead th.mk { position: relative; }
+.ctype { position: absolute; left: 3px; top: 3px; width: 17px; height: 17px; border-radius: 50%; border: 0; padding: 0; font: 700 10px/17px var(--font-ui); background: var(--paper-head-ink); color: #fff; z-index: 1; opacity: .85; }
+.ctype:hover { opacity: 1; }
+.ctype.is-memo { background: #fff; color: var(--paper-head-ink); box-shadow: inset 0 0 0 1.5px var(--paper-head-ink); }
+table.roster button.chk { width: 100%; height: 100%; min-height: 26px; border: 0; background: transparent; font: 800 15px var(--font-doc); color: #1a7f3c; padding: 0; }
+table.roster button.chk:hover { background: #f1f7f2; }
 table.roster td .ed { text-align: center; font-size: 12.5px; min-height: 26px; display: flex; align-items: center; justify-content: center; }
 table.roster td.att { padding: 2px 4px; cursor: pointer; text-align: left; }
 table.roster td.att:hover { box-shadow: inset 0 0 0 2px var(--accent); }
 .att-chips { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; min-height: 22px; }
 .att-chips .none { color: #c3c9d0; font-size: 11px; font-family: var(--font-ui); }
-.chip-att { display: inline-flex; gap: 3px; align-items: center; border-radius: 999px; padding: 1px 7px; font: 700 10.5px var(--font-ui); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.chip-att { display: inline-flex; gap: 3px; align-items: center; border-radius: 999px; padding: 0 6px; font: 700 10px var(--font-ui); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .chip-att em { font-style: normal; font-weight: 400; opacity: .9; overflow: hidden; text-overflow: ellipsis; }
 .t-abs { background: var(--abs-bg); color: var(--abs-ink); }
 .t-late { background: var(--late-bg); color: var(--late-ink); }
@@ -236,6 +249,26 @@ table.month tbody tr:nth-child(5n) > * { border-bottom-color: #9fabb7; }
 .rec .d { font-variant-numeric: tabular-nums; color: var(--paper-sub); font-weight: 700; }
 .rec .n { font-weight: 700; }
 .rec .r { color: var(--paper-sub); overflow-wrap: anywhere; }
+table.hrs { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.hrs th, table.hrs td { border: 1px solid var(--paper-grid); padding: 5px 8px; text-align: center; font-variant-numeric: tabular-nums; }
+table.hrs tr > :first-child { border-left: 0; }
+table.hrs tr > :last-child { border-right: 0; }
+table.hrs tbody tr:last-child > * { border-bottom: 0; }
+table.hrs thead th { border-top: 0; border-bottom: 1.5px solid var(--paper-rule); background: var(--paper-head); color: var(--paper-head-ink); font-weight: 800; font-size: 12px; }
+table.hrs td.sj { text-align: left; }
+table.hrs td.sj .chip { min-height: 24px; font-size: 13px; padding: 1px 10px; }
+table.hrs td.num { font-weight: 800; }
+table.hrs td.z { color: #c3c9d0; font-weight: 400; }
+table.hrs tr.cur > * { background: var(--paper-today); }
+table.hrs tr.vac > * { color: var(--paper-faint); }
+table.hrs tfoot td { font-weight: 800; background: var(--paper-lab); border-top: 1.5px solid var(--paper-rule); }
+table.hrs input { width: 64px; text-align: center; border: 1px solid var(--paper-grid); border-radius: 6px; padding: 3px; font: inherit; background: #fff; color: var(--paper-ink); }
+.diff-ok { color: #1a7f3c; } .diff-short { color: var(--paper-red); }
+.hsec { margin-top: 20px; display: grid; gap: 8px; }
+.hsec h2 { margin: 0; font-size: 15px; font-weight: 800; }
+.frame.hrsw-frame { min-width: 640px; }
+.cat-row { display: grid; grid-template-columns: auto 110px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.sw.cat { width: auto; height: 22px; border-radius: 999px; padding: 0 9px; font: 600 11px var(--font-ui); color: #222; }
 .empty-note { color: var(--paper-sub); font: 13px var(--font-ui); padding: 12px 2px; }
 
 /* ── 패널(과목·템플릿·설정) ── */
@@ -298,7 +331,7 @@ textarea.field { width: 100%; min-height: 160px; resize: vertical; line-height: 
   .rec { grid-template-columns: 80px minmax(0, 1fr) 48px; }
   .rec .r { grid-column: 1 / -1; }
   .frame.roster-frame { min-width: 560px; }
-  table.roster col.c-att { width: 34%; }
+  table.roster col.c-att { width: 24%; }
 }
 @media (prefers-reduced-motion: no-preference) {
   .tab, .btn, .daytab { transition: background-color .15s, border-color .15s; }
@@ -329,6 +362,7 @@ textarea.field { width: 100%; min-height: 160px; resize: vertical; line-height: 
     <nav class="tabs" role="tablist" aria-label="화면">
       <button class="tab" role="tab" data-tab="week" id="tab-week">주간학습</button>
       <button class="tab" role="tab" data-tab="att" id="tab-att">출결</button>
+      <button class="tab" role="tab" data-tab="hrs" id="tab-hrs">시수</button>
       <button class="tab" role="tab" data-tab="tpl" id="tab-tpl">템플릿</button>
       <button class="tab" role="tab" data-tab="subj" id="tab-subj">과목</button>
       <button class="tab" role="tab" data-tab="set" id="tab-set">설정</button>
@@ -381,8 +415,15 @@ const KR_HOLIDAYS = {
 const uid = () => Math.random().toString(36).slice(2, 9);
 const C = { yellow: "#fff1a6", green: "#d3ee9f", blue: "#d5ebf5" };
 const PRESETS = ["#fff1a6", "#d3ee9f", "#d5ebf5", "#fbd3dc", "#ffdcb0", "#e2daf7", "#cdeedf", "#f3e3cb", "#e6e8eb", "#ffffff"];
-const ROSTER = ["김민호", "김서하", "김서현", "김시현", "김유찬", "김이솔", "김재준", "문샛별", "박주경", "박해민", "서로하", "손연수", "신주호", "안지호", "이수빈",
-  "이정원", "전지윤", "정재인", "최시원", "최재우", "황지효", "장하선"];
+const ROSTER = ["김민호", "김서하", "김서현", "김시현", "김유환", "김이솔", "김재준", "문샛별", "박주경", "박해민", "서로하", "손연수", "신주호", "안지호", "이수빈",
+  "이정원", "전지윤", "정재인", "최시원", "최재우", "황지후", "장하선", "김세헌"];
+const OLD_ROSTER15 = ["김민호", "김서하", "김서현", "김시현", "김유찬", "김이솔", "김재준", "문샛별", "박주경", "박해민", "서로하", "손연수", "신주호", "안지호", "이수빈"];
+/* 색깔별 수업 유형: 과목 색이 같으면 그 유형의 '단원 및 주제' 기본값이 들어감 */
+const defaultCats = () => [
+  { id: "c_" + uid(), name: "교과 수업", color: "#fff1a6", topic: "교과 학습", desc: "교과 전담 · 임장 필요 없음" },
+  { id: "c_" + uid(), name: "강사 수업", color: "#d3ee9f", topic: "", desc: "강사 수업 · 임장 필요" },
+  { id: "c_" + uid(), name: "담임 수업", color: "#d5ebf5", topic: "", desc: "내가 진행하는 수업" }
+];
 const ATT_TYPES = [["결석", "t-abs"], ["지각", "t-late"], ["조퇴", "t-early"]];
 const attCls = t => (ATT_TYPES.find(x => x[0] === t) || [, ""])[1];
 const COLS = 4;
@@ -392,22 +433,24 @@ function defaultState() {
     ["실과", C.blue], ["체육", C.green], ["음악", C.blue], ["미술", C.blue], ["창체", C.blue], ["코딩", C.blue], ["도서관", C.blue], ["연극", C.green]];
   const subjects = names.map(([name, color]) => ({ id: "s_" + uid(), name, color }));
   const S = n => subjects.find(s => s.name === n).id;
-  const c = (s, t = "", n = "", extra = {}) => ({ s: s ? S(s) : null, t, n, span: 1, ...extra });
+  const c = (s, t = null, n = "", extra = {}) => ({ s: s ? S(s) : null, t, n, span: 1, ...extra });
   const E = () => c(null);
   const tpl = {
     id: "t_" + uid(), name: "기본 시간표",
     days: [
       { count: 6, todo: "", cells: [c("과학", "교과 학습"), c("코딩", "코딩 수업", "컴퓨터실(코딩)"), c("체육", "교과 학습"), c("수학"), c("실과", "", "짝수 주 실과 / 홀수 주 사회", { span: 2, o: S("사회") }), E()] },
       { count: 6, todo: "리더십교육 안내", cells: [c("도서관", "독서"), c("연극", "교과 학습"), c("영어", "교과 학습"), c("국어"), c("국어"), c("체육", "교과 학습")] },
-      { count: 5, todo: "", cells: [c("국어"), c("도덕", "교과 학습"), c("창체", "사회정서교육", "", { span: 2, box: true }), E(), c("영어", "교과 학습"), E()] },
+      { count: 5, todo: "", cells: [c("국어"), c("도덕", "교과 학습"), c("창체", "사회정서교육", "", { span: 2 }), E(), c("영어", "교과 학습"), E()] },
       { count: 6, todo: "", cells: [c("과학", "교과 학습"), c("과학", "교과 학습"), c("영어", "교과 학습"), c("수학"), c("사회"), c("사회")] },
-      { count: 6, todo: "", cells: [c("국어"), c("국어"), c("미술", "플레이북"), c("미술"), c("체육", "체육관"), c("창체", "학급회의")] }
+      { count: 6, todo: "", cells: [c("국어"), c("국어"), c("미술", "플레이북"), c("미술"), c("체육", "체육관"), c("창체", "자리 바꾸기 + 교실 정리", "", { ot: "학급회의" })] }
     ]
   };
   const blank = { id: "t_" + uid(), name: "빈 시간표", days: DAYS.map(() => ({ count: 6, todo: "", cells: Array.from({ length: 6 }, E) })) };
   return {
-    v: 2,
+    v: 3,
     settings: {
+      categories: defaultCats(),
+      targets: {},
       className: "6학년 1반",
       semesters: [{ name: "1학기", start: "2026-03-03", end: "2026-07-24" }, { name: "2학기", start: "2026-08-24", end: "2027-02-12" }],
       holidays: [
@@ -427,6 +470,10 @@ function defaultState() {
 
 /* 예전 버전 데이터를 새 형식으로 */
 const OLD_COLORS = { "#fff27a": C.yellow, "#bfe86b": C.green, "#cde8f2": C.blue };
+function eachCell(s, fn) {
+  (s.templates || []).forEach(t => t.days.forEach(d => d.cells.forEach(c => fn(c, t))));
+  Object.values(s.weeks || {}).forEach(w => (w.days || []).forEach(d => d.cells.forEach(c => fn(c, null))));
+}
 function migrateWeek(w) {
   let ch = false;
   if (w.checks) {
@@ -441,9 +488,25 @@ function migrate(s) {
   if ((s.v || 1) < 2) {
     (s.subjects || []).forEach(x => { const n = OLD_COLORS[String(x.color || "").toLowerCase()]; if (n) x.color = n; });
     const names = (s.settings.students || []).map(p => p.name);
-    if (names.length === 15 && names.every((n, i) => n === ROSTER[i])) ROSTER.slice(15).forEach(name => s.settings.students.push({ id: "p_" + uid(), name }));
+    if (names.length === 15 && names.every((n, i) => n === OLD_ROSTER15[i])) ROSTER.slice(15).forEach(name => s.settings.students.push({ id: "p_" + uid(), name }));
     delete s.settings.checkTitles;
     s.v = 2; ch = true;
+  }
+  if (s.v < 3) {
+    const st = s.settings.students;
+    const names = st.map(p => p.name);
+    if (names.slice(0, 15).every((n, i) => n === OLD_ROSTER15[i])) {
+      st.forEach(p => { if (p.name === "김유찬") p.name = "김유환"; if (p.name === "황지효") p.name = "황지후"; });
+      if (!st.some(p => p.name === "김세헌")) st.push({ id: "p_" + uid(), name: "김세헌" });
+    }
+    s.settings.categories = s.settings.categories || defaultCats();
+    s.settings.targets = s.settings.targets || {};
+    eachCell(s, c => { delete c.box; if (c.t === "") c.t = null; });
+    const base = (s.templates || []).find(t => t.name === "기본 시간표");
+    const fri6 = base && base.days[4] && base.days[4].cells[5];
+    const sub = fri6 && (s.subjects || []).find(x => x.id === fri6.s);
+    if (sub && sub.name === "창체" && fri6.t === "학급회의" && !fri6.ot) { fri6.t = "자리 바꾸기 + 교실 정리"; fri6.ot = "학급회의"; }
+    s.v = 3; ch = true;
   }
   for (const w of Object.values(s.weeks || {})) ch = migrateWeek(w) || ch;
   return ch;
@@ -458,7 +521,7 @@ if (!state || !state.settings || !Array.isArray(state.templates)) state = defaul
 state.weeks = state.weeks || {};
 const bootMigrated = migrate(state);
 
-const ui = { tab: "week", ws: null, day: null, view: "auto", tplId: null, month: null };
+const ui = { tab: "week", ws: null, day: null, view: "auto", tplId: null, month: null, sem: null };
 try { Object.assign(ui, JSON.parse(localStorage.getItem(UI_KEY) || "{}"), { ws: null, day: null, month: null }); } catch {}
 const saveUI = () => { try { localStorage.setItem(UI_KEY, JSON.stringify({ tab: ui.tab, view: ui.view, tplId: ui.tplId })); } catch {} };
 
@@ -562,7 +625,11 @@ function textColor(hex) {
 }
 const chipStyle = color => `background:${esc(color)};color:${textColor(color)}`;
 const clone = o => JSON.parse(JSON.stringify(o));
-const blankCell = s => ({ s: s || null, t: "", n: "", span: 1 });
+const blankCell = s => ({ s: s || null, t: null, n: "", span: 1 });
+const catOf = color => (state.settings.categories || []).find(k => String(k.color).toLowerCase() === String(color || "").toLowerCase());
+const catOfSubj = id => { const s = subj(id); return s ? catOf(s.color) : null; };
+/* 단원 및 주제: 직접 쓴 값이 없으면(null) 수업 유형의 기본값 */
+const topicOf = c => (c.t != null ? c.t : ((catOfSubj(c.s) || {}).topic || ""));
 
 function holidayOn(dateStr) {
   const custom = state.settings.holidays.find(h => h.start && h.start <= dateStr && dateStr <= (h.end || h.start));
@@ -590,12 +657,14 @@ function daysFromTemplate(tpl, weekNo) {
   const odd = weekNo != null && weekNo % 2 === 1;
   return (tpl ? tpl.days : DAYS.map(blankDay)).map(d => ({
     count: d.count, todo: d.todo || "",
-    cells: d.cells.map(c => ({ s: odd && c.o ? c.o : c.s, t: c.t || "", n: c.n || "", span: c.span || 1, box: !!c.box }))
+    cells: d.cells.map(c => ({ s: odd && c.o ? c.o : c.s, t: odd && c.ot ? c.ot : (c.t ?? null), n: c.n || "", span: c.span || 1 }))
   }));
 }
 function virtualWeek(ws) {
   const tpl = defaultTpl();
-  return { templateId: tpl ? tpl.id : null, days: daysFromTemplate(tpl, weekInfo(ws).n), marks: {}, colTitles: ["", "", "", ""], att: {}, memo: "", open: [false, false, false, false, false] };
+  let colTypes = ["memo", "memo", "memo", "memo"];
+  for (let k = 1; k <= 8; k++) { const pw = state.weeks[ymd(addDays(ws, -7 * k))]; if (pw && pw.colTypes) { colTypes = [...pw.colTypes]; break; } }
+  return { templateId: tpl ? tpl.id : null, days: daysFromTemplate(tpl, weekInfo(ws).n), marks: {}, colTitles: ["", "", "", ""], colTypes, att: {}, memo: "", open: [false, false, false, false, false] };
 }
 const wsKey = () => ymd(ui.ws);
 const curWeek = () => state.weeks[wsKey()] || virtualWeek(ui.ws);
@@ -663,6 +732,7 @@ function render() {
   document.querySelectorAll(".tab").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === ui.tab)));
   if (ui.tab === "week") view.innerHTML = renderWeek();
   else if (ui.tab === "att") view.innerHTML = renderMonth();
+  else if (ui.tab === "hrs") view.innerHTML = renderHours();
   else if (ui.tab === "tpl") view.innerHTML = renderTemplates();
   else if (ui.tab === "subj") view.innerHTML = renderSubjects();
   else view.innerHTML = renderSettings();
@@ -707,8 +777,8 @@ function renderGrid(days, mode, ws, week) {
         const inner = subjCellInner(x.c, mode);
         const sp = x.span > 1 ? ` colspan="${x.span}"` : "";
         r1 += `<td class="subj${inner.empty ? " empty" : ""}"${sp} style="${inner.style}" tabindex="0" role="button" aria-label="${DAYS[d]}요일 ${x.i + 1}교시 과목 바꾸기" data-act="cell" data-d="${d}" data-p="${x.i}">${inner.html}<span class="grip no-print" title="끌어서 늘이거나 줄이기"></span></td>`;
-        const topic = `<div class="ed" ${edAttr("")} data-k="cell" data-f="t" data-d="${d}" data-p="${x.i}">${esc(x.c.t)}</div>`;
-        r2 += `<td${sp}>${x.c.box ? `<div class="boxed">${topic}</div>` : topic}</td>`;
+        const alt = mode === "tpl" && (x.c.ot || x.c.o) ? `<div class="alt-line">홀수 주: ${esc([x.c.o && subj(x.c.o) ? subj(x.c.o).name : "", x.c.ot || ""].filter(Boolean).join(" · "))}</div>` : "";
+        r2 += `<td${sp}><div class="ed" ${edAttr("")} data-k="cell" data-f="t" data-d="${d}" data-p="${x.i}">${esc(topicOf(x.c))}</div>${alt}</td>`;
         r3 += `<td${sp}><div class="ed" ${edAttr("")} data-k="cell" data-f="n" data-d="${d}" data-p="${x.i}">${esc(x.c.n)}</div></td>`;
       }
       const openNote = hol ? `<span class="hn">${esc(hol.name)}</span><button class="hbtn sm no-print" data-act="close-day" data-d="${d}">휴일로</button>` : "";
@@ -718,7 +788,7 @@ function renderGrid(days, mode, ws, week) {
     }
     h += `</tbody>`;
   });
-  return h + `</table></div></div><p class="drag-tip">과목 칸을 옆 칸까지 끌면 2·3교시 블록으로 합쳐져요. 블록 오른쪽 끝을 끌어 늘이거나 줄일 수 있어요.</p>`;
+  return h + `</table></div></div><p class="drag-tip">과목 칸을 옆 칸까지 끌면 2·3교시 블록으로 합쳐져요. 블록 오른쪽 끝을 끌어 늘이거나 줄일 수 있어요.</p>` + legendHTML();
 }
 
 function renderCards(days, mode, ws, week) {
@@ -749,12 +819,12 @@ function renderCards(days, mode, ws, week) {
       const label = x.span > 1 ? `${x.i + 1}–${x.i + x.span}<br>교시` : `${x.i + 1}교시`;
       h += `<div class="pcard"><div class="pn">${label}</div>
         <button class="ps" style="${inner.style || "background:var(--paper)"}" data-act="cell" data-d="${d}" data-p="${x.i}" aria-label="${x.i + 1}교시 과목 바꾸기">${inner.html || '<span style="color:var(--paper-faint);font-weight:400">과목 선택</span>'}</button>
-        <div class="pt"><div class="ed" ${edAttr("단원 및 주제")} data-k="cell" data-f="t" data-d="${d}" data-p="${x.i}">${esc(x.c.t)}</div>
+        <div class="pt"><div class="ed" ${edAttr("단원 및 주제")} data-k="cell" data-f="t" data-d="${d}" data-p="${x.i}">${esc(topicOf(x.c))}</div>${mode === "tpl" && (x.c.ot || x.c.o) ? `<div class="alt-line">홀수 주: ${esc([x.c.o && subj(x.c.o) ? subj(x.c.o).name : "", x.c.ot || ""].filter(Boolean).join(" · "))}</div>` : ""}
         <div class="ed note" ${edAttr("장소·준비물")} data-k="cell" data-f="n" data-d="${d}" data-p="${x.i}">${esc(x.c.n)}</div></div></div>`;
     }
     h += `</div>`;
   }
-  h += `<div class="todo-card" style="margin-top:10px"><div class="h">TO DO</div><div class="ed" ${edAttr("할 일·안내")} data-k="todo" data-d="${d}">${esc(day.todo)}</div></div>`;
+  h += legendHTML() + `<div class="todo-card" style="margin-top:10px"><div class="h">TO DO</div><div class="ed" ${edAttr("할 일·안내")} data-k="todo" data-d="${d}">${esc(day.todo)}</div></div>`;
   return h;
 }
 
@@ -793,7 +863,7 @@ function renderWeek() {
     <div class="sheet-head"><span class="cls">${esc(info.sem ? info.sem.name : "")}</span><h1>(${esc(state.settings.className)}) 주간학습 안내</h1><div class="wk">${wkLabel}</div></div>`;
   if (info.vacation) h += `<div class="vac-banner">방학 기간이에요</div>`;
   h += cards ? renderCards(w.days, "week", ws, w) : renderGrid(w.days, "week", ws, w);
-  h += renderBottom(w, ws) + `</article>`;
+  h += weekHoursHTML(ws) + renderBottom(w, ws) + `</article>`;
   return h;
 }
 
@@ -808,21 +878,105 @@ function attChips(ws, sid) {
 
 function renderBottom(w, ws) {
   const titles = w.colTitles || ["", "", "", ""];
-  const narrow = isNarrow(); // 휴대폰에서는 출결 칸을 이름 바로 옆에
+  const types = w.colTypes || ["memo", "memo", "memo", "memo"];
   let rows = state.settings.students.map((p, i) => {
     const mk = (w.marks && w.marks[p.id]) || [];
-    const marks = Array.from({ length: COLS }, (_, j) => `<td><div class="ed" ${edAttr("")} data-k="mark" data-id="${p.id}" data-j="${j}">${esc(mk[j] || "")}</div></td>`).join("");
+    const marks = Array.from({ length: COLS }, (_, j) => types[j] === "check"
+      ? `<td><button class="chk" data-act="chk" data-id="${p.id}" data-j="${j}" aria-pressed="${!!mk[j]}" aria-label="${esc(p.name)} ${esc(titles[j] || j + 1 + "번째 항목")} 체크">${mk[j] ? "✔" : ""}</button></td>`
+      : `<td><div class="ed" ${edAttr("")} data-k="mark" data-id="${p.id}" data-j="${j}">${esc(mk[j] || "")}</div></td>`).join("");
     const att = `<td class="att" data-act="att" data-id="${p.id}" role="button" tabindex="0" aria-label="${esc(p.name)} 출결 입력"><div class="att-chips">${attChips(ws, p.id)}</div></td>`;
-    return `<tr><td class="no">${i + 1}</td><td class="nm">${esc(p.name)}</td>${narrow ? att + marks : marks + att}</tr>`;
+    return `<tr><td class="no">${i + 1}</td><td class="nm">${esc(p.name)}</td>${marks}${att}</tr>`;
   }).join("");
-  const heads = titles.map((t, j) => `<th><div class="ed" ${edAttr("")} data-k="coltitle" data-j="${j}" aria-label="${j + 1}번째 항목 제목">${esc(t)}</div></th>`).join("");
+  const heads = titles.map((t, j) => `<th class="mk"><button class="ctype no-print${types[j] === "check" ? "" : " is-memo"}" data-act="coltype" data-j="${j}" title="${types[j] === "check" ? "체크리스트 칸 · 눌러서 메모 칸으로" : "메모 칸 · 눌러서 체크리스트 칸으로"}" aria-label="${j + 1}번째 칸 종류 바꾸기">${types[j] === "check" ? "✓" : "✎"}</button><div class="ed" ${edAttr("")} data-k="coltitle" data-j="${j}" aria-label="${j + 1}번째 항목 제목">${esc(t)}</div></th>`).join("");
   if (!rows) rows = `<tr><td colspan="${COLS + 3}" style="color:var(--paper-sub);height:40px">설정에서 학생 명단을 입력하세요</td></tr>`;
   return `<section class="bottom">
-    <div class="grid-wrap"><div class="frame roster-frame"><table class="roster"><colgroup><col class="c-no"><col class="c-name">${narrow ? '<col class="c-att">' + "<col>".repeat(COLS) : "<col>".repeat(COLS) + '<col class="c-att">'}</colgroup>
-      <thead><tr><th></th><th>이름</th>${narrow ? "<th>출결</th>" + heads : heads + "<th>출결</th>"}</tr></thead>
+    <div class="grid-wrap"><div class="frame roster-frame"><table class="roster"><colgroup><col class="c-no"><col class="c-name">${"<col>".repeat(COLS)}<col class="c-att"></colgroup>
+      <thead><tr><th></th><th>이름</th>${heads}<th>출결</th></tr></thead>
       <tbody>${rows}</tbody></table></div></div>
     <div class="memo"><div class="memo-h">MEMO</div><div class="ed" ${edAttr("이번 주 메모")} data-k="memo">${esc(w.memo)}</div></div>
   </section>`;
+}
+
+/* 수업 유형 범례 */
+function legendHTML() {
+  const cats = state.settings.categories || [];
+  if (!cats.length) return "";
+  return `<div class="legend no-print">${cats.map(k => `<span><i style="background:${esc(k.color)}"></i><b>${esc(k.name)}</b>${k.desc ? ` · ${esc(k.desc)}` : ""}</span>`).join("")}</div>`;
+}
+
+/* 시수 계산: 합친 블록은 교시 수만큼, 휴일(수업일로 바꾼 날 제외)과 기간 밖 날짜는 빼고 셈 */
+function countWeek(ws, from, to) {
+  const w = state.weeks[ymd(ws)] || virtualWeek(ws);
+  const out = {};
+  w.days.forEach((day, d) => {
+    const ds = ymd(addDays(ws, d));
+    if ((from && ds < from) || (to && ds > to)) return;
+    if (holidayOn(ds) && !(w.open && w.open[d])) return;
+    for (const x of layoutCells(day)) if (!x.na && x.c.s && subj(x.c.s)) out[x.c.s] = (out[x.c.s] || 0) + x.span;
+  });
+  return out;
+}
+const sumOf = o => Object.values(o).reduce((a, b) => a + b, 0);
+function hourChips(map) {
+  return state.subjects.filter(s => map[s.id]).map(s => `<span class="hchip" style="${chipStyle(s.color)}">${esc(s.name)} <b>${map[s.id]}</b></span>`).join("");
+}
+function weekHoursHTML(ws) {
+  const map = countWeek(ws);
+  const total = sumOf(map);
+  return `<div class="hours no-print"><span class="lbl">이번 주 시수</span>${hourChips(map)}<span class="hchip total">합계 <b>${total}</b></span></div>`;
+}
+
+function curSemIndex() {
+  const t = ymd(todayKST()), sems = state.settings.semesters;
+  let i = sems.findIndex(s => s.start && s.end && s.start <= t && t <= s.end);
+  if (i < 0) i = sems.findIndex(s => s.start && s.start > t);
+  return i < 0 ? Math.max(0, sems.length - 1) : i;
+}
+function renderHours() {
+  const sems = state.settings.semesters.filter(s => s.start && s.end);
+  if (!sems.length) return `<section class="panel"><h2>시수</h2><p class="hint">설정에서 학기 시작일과 종료일을 넣으면 시수를 계산해요.</p></section>`;
+  if (ui.sem == null || !sems[ui.sem]) ui.sem = Math.min(curSemIndex(), sems.length - 1);
+  const sem = sems[ui.sem];
+  const today = ymd(todayKST()), thisWs = ymd(mondayOf(todayKST()));
+  const key = sem.start;
+  const targets = (state.settings.targets || {})[key] || {};
+  const weeks = [];
+  let n = 0;
+  for (let ws = mondayOf(parse(sem.start)); ymd(ws) <= sem.end; ws = addDays(ws, 7)) {
+    const vac = isVacationWeek(ws);
+    if (!vac) n++;
+    weeks.push({ ws, n: vac ? null : n, map: countWeek(ws, sem.start, sem.end), done: countWeek(ws, sem.start, today < sem.end ? today : sem.end) });
+  }
+  const total = {}, done = {};
+  weeks.forEach(w => { for (const [k, v] of Object.entries(w.map)) total[k] = (total[k] || 0) + v; if (ymd(w.ws) <= today) for (const [k, v] of Object.entries(w.done)) done[k] = (done[k] || 0) + v; });
+  const used = state.subjects.filter(s => total[s.id] || targets[s.id]);
+  const sumRow = (o) => used.reduce((a, s) => a + (o[s.id] || 0), 0);
+  const summary = used.map(s => {
+    const t = targets[s.id], diff = t ? total[s.id] - t : null;
+    return `<tr><td class="sj"><span class="chip" style="${chipStyle(s.color)}">${esc(s.name)}</span></td>
+      <td class="num">${done[s.id] || 0}</td><td class="num">${total[s.id] || 0}</td>
+      <td><input type="number" min="0" inputmode="numeric" data-target="${s.id}" value="${t || ""}" placeholder="—" aria-label="${esc(s.name)} 목표 시수"></td>
+      <td class="${diff == null ? "z" : diff >= 0 ? "diff-ok" : "diff-short"}">${diff == null ? "—" : diff === 0 ? "딱 맞음" : diff > 0 ? `+${diff}` : `${diff} 부족`}</td></tr>`;
+  }).join("");
+  const wrows = weeks.map(w => {
+    const cur = ymd(w.ws) === thisWs;
+    const cells = used.map(s => { const v = w.map[s.id] || 0; return `<td class="${v ? "" : "z"}">${v}</td>`; }).join("");
+    return `<tr class="${cur ? "cur" : ""}${w.n == null ? " vac" : ""}"><td style="text-align:left;white-space:nowrap"><b>${w.n ? w.n + "주" : "방학"}</b> <span class="hint">${md(w.ws)}~</span></td>${cells}<td class="num">${sumOf(w.map)}</td></tr>`;
+  }).join("");
+  return `<div class="toolbar">
+    <div class="seg" role="group" aria-label="학기 선택">${sems.map((x, i) => `<button data-act="sem-pick" data-i="${i}" aria-pressed="${i === ui.sem}">${esc(x.name)}</button>`).join("")}</div>
+    <span class="hint">${md(parse(sem.start))}~${md(parse(sem.end))} · 휴일은 빼고, 합친 블록은 교시 수만큼 세요. 아직 안 연 주는 기본 템플릿으로 계산해요.</span>
+  </div>
+  <article class="sheet">
+    <div class="mhead"><h1>${esc(sem.name)} 과목별 시수</h1>
+      <div class="stats"><div class="stat all">지금까지<b>${sumRow(done)}</b></div><div class="stat all">학기 전체 예정<b>${sumRow(total)}</b></div></div></div>
+    <div class="grid-wrap"><div class="frame"><table class="hrs"><thead><tr><th style="text-align:left">과목</th><th>지금까지</th><th>학기 전체 예정</th><th>목표 시수</th><th>차이</th></tr></thead>
+      <tbody>${summary || `<tr><td colspan="5" class="z">시간표에 과목이 없어요</td></tr>`}</tbody>
+      <tfoot><tr><td style="text-align:left">합계</td><td>${sumRow(done)}</td><td>${sumRow(total)}</td><td>${used.reduce((a, s) => a + (Number(targets[s.id]) || 0), 0) || "—"}</td><td></td></tr></tfoot></table></div></div>
+    <section class="hsec"><h2>주별 시수</h2>
+      <div class="grid-wrap"><div class="frame hrsw-frame"><table class="hrs"><thead><tr><th style="text-align:left">주</th>${used.map(s => `<th>${esc(s.name)}</th>`).join("")}<th>계</th></tr></thead><tbody>${wrows}</tbody></table></div></div>
+    </section>
+  </article>`;
 }
 
 /* 월별 출결 */
@@ -894,17 +1048,30 @@ function renderTemplates() {
 }
 
 function renderSubjects() {
+  const cats = state.settings.categories || [];
   const rows = state.subjects.map((s, i) => `<div class="subj-row">
       <span class="chip" style="${chipStyle(s.color)}">${esc(s.name)}</span>
       <div class="row" style="min-width:0">
         <input class="field grow" data-sf="name" data-id="${s.id}" value="${esc(s.name)}" aria-label="과목 이름">
-        <div class="swatches">${PRESETS.map(c => `<button class="sw" style="background:${c}" data-act="subj-color" data-id="${s.id}" data-c="${c}" aria-label="색 ${c}" aria-pressed="${c.toLowerCase() === s.color.toLowerCase()}"></button>`).join("")}
+        <div class="swatches">${cats.map(k => `<button class="sw cat" style="background:${esc(k.color)}" data-act="subj-color" data-id="${s.id}" data-c="${esc(k.color)}" aria-pressed="${String(k.color).toLowerCase() === s.color.toLowerCase()}">${esc(k.name)}</button>`).join("")}${PRESETS.filter(c => !cats.some(k => String(k.color).toLowerCase() === c)).map(c => `<button class="sw" style="background:${c}" data-act="subj-color" data-id="${s.id}" data-c="${c}" aria-label="색 ${c}" aria-pressed="${c.toLowerCase() === s.color.toLowerCase()}"></button>`).join("")}
           <input type="color" data-sf="color" data-id="${s.id}" value="${esc(s.color)}" aria-label="직접 고르기"></div>
       </div>
       <div class="row" style="gap:2px"><button class="btn icon" data-act="subj-up" data-id="${s.id}" ${i ? "" : "disabled"} aria-label="위로">↑</button><button class="btn icon" data-act="subj-down" data-id="${s.id}" ${i < state.subjects.length - 1 ? "" : "disabled"} aria-label="아래로">↓</button></div>
       <button class="btn icon danger" data-act="subj-del" data-id="${s.id}" aria-label="${esc(s.name)} 삭제">삭제</button>
     </div>`).join("");
+  const catRows = cats.map((k, i) => `<div class="cat-row">
+      <input type="color" data-cat="color" data-i="${i}" value="${esc(k.color)}" aria-label="${esc(k.name)} 색">
+      <input class="field" data-cat="name" data-i="${i}" value="${esc(k.name)}" aria-label="유형 이름">
+      <div class="row"><input class="field grow" data-cat="topic" data-i="${i}" value="${esc(k.topic)}" placeholder="단원 및 주제 기본값 (비우면 없음)" aria-label="단원 및 주제 기본값">
+        <input class="field grow" data-cat="desc" data-i="${i}" value="${esc(k.desc || "")}" placeholder="설명 (예: 임장 필요)" aria-label="설명"></div>
+      <button class="btn icon danger" data-act="cat-del" data-i="${i}" aria-label="${esc(k.name)} 삭제">삭제</button></div>`).join("");
   return `<section class="panel">
+    <h2>색깔별 수업 유형</h2>
+    <p class="hint">과목 색이 유형 색과 같으면, 그 과목 칸의 '단원 및 주제'에 기본값이 자동으로 들어가요. 칸에 직접 쓰면 그 내용이 우선이에요.</p>
+    <div class="rows">${catRows}</div>
+    <button class="btn" data-act="cat-add" style="justify-self:start">유형 추가</button>
+  </section>
+  <section class="panel">
     <div class="row" style="justify-content:space-between"><h2>과목과 색상</h2><button class="btn icon" data-act="undo" ${undoStack.length ? "" : "disabled"}>↶ 되돌리기</button></div>
     <p class="hint">색을 바꾸면 모든 주와 템플릿에 한꺼번에 반영돼요.</p>
     <div class="rows">${rows}</div>
@@ -1000,14 +1167,18 @@ function openCellDialog(d, p) {
   const isTpl = c0.mode === "tpl";
   const span = spanOf(day, p);
   const maxSpan = day.count - p;
+  const cat = catOfSubj(cell.s);
   const chips = sel => `<button class="chip none" data-pick="" aria-pressed="${!sel}">비우기</button>` +
     state.subjects.map(s => `<button class="chip" style="${chipStyle(s.color)}" data-pick="${s.id}" aria-pressed="${s.id === sel}">${esc(s.name)}</button>`).join("");
   const title = `${DAYS[d]}요일 ${span > 1 ? `${p + 1}–${p + span}` : p + 1}교시`;
   openDialog(`<h2>${title}</h2>
-    <div class="rows"><h3>${isTpl ? "과목 (짝수 주·기본)" : "과목"}</h3><div class="pick" data-g="s">${chips(cell.s)}</div></div>
-    ${isTpl ? `<div class="rows"><h3>홀수 주에는 다른 과목 (선택)</h3><select class="field" id="odd-pick"><option value="">같은 과목</option>${state.subjects.map(s => `<option value="${s.id}"${s.id === cell.o ? " selected" : ""}>${esc(s.name)}</option>`).join("")}</select></div>` : ""}
+    <div class="rows"><h3>${isTpl ? "과목 (기본 · 짝수 주)" : "과목"}</h3><div class="pick" data-g="s">${chips(cell.s)}</div>
+      ${cat && cat.topic && cell.t != null && cell.t !== cat.topic ? `<button class="btn" data-x="deftopic" style="justify-self:start">단원 및 주제를 '${esc(cat.topic)}'(으)로 되돌리기</button>` : ""}</div>
+    ${isTpl ? `<div class="rows"><h3>홀수 주(1·3·5…주)에는 다르게 <span class="hint">비워 두면 기본과 같아요</span></h3>
+      <div class="row"><select class="field" id="odd-pick" aria-label="홀수 주 과목"><option value="">같은 과목</option>${state.subjects.map(s => `<option value="${s.id}"${s.id === cell.o ? " selected" : ""}>${esc(s.name)}</option>`).join("")}</select>
+      <input class="field grow" id="odd-topic" placeholder="홀수 주 단원 및 주제 (예: 학급회의)" value="${esc(cell.ot || "")}" aria-label="홀수 주 단원 및 주제"></div></div>` : ""}
     <div class="rows"><h3>수업 길이 (${p + 1}교시부터)</h3><div class="seg">${Array.from({ length: Math.min(maxSpan, 4) }, (_, k) => `<button data-x="span" data-n="${k + 1}" aria-pressed="${span === k + 1}">${k + 1}교시 블록</button>`).join("")}</div>
-      <label class="row" style="gap:4px"><input type="checkbox" id="box-pick" ${cell.box ? "checked" : ""}> 단원 및 주제에 테두리 박스</label></div>
+</div>
     <div class="rows"><h3>${DAYS[d]}요일 교시 수</h3><div class="seg">${[4, 5, 6].map(n => `<button data-x="count" data-n="${n}" aria-pressed="${day.count === n}">${n}교시</button>`).join("")}</div></div>
     <div class="acts"><button class="btn primary" data-x="close">닫기</button></div>`,
     (dlg, close) => {
@@ -1018,12 +1189,14 @@ function openCellDialog(d, p) {
         const x = e.target.closest("[data-x]"); if (!x || x.disabled) return;
         const a = x.dataset.x;
         if (a === "close") close();
+        else if (a === "deftopic") { apply((_, c) => { c.t = null; }); close(); }
         else if (a === "span") { apply(dy => setSpan(dy, p, Number(x.dataset.n))); close(); }
         else if (a === "count") { apply(dy => { dy.count = Number(x.dataset.n); }); close(); }
       });
       const odd = dlg.querySelector("#odd-pick");
       odd && odd.addEventListener("change", () => apply((_, c) => { c.o = odd.value || null; }));
-      dlg.querySelector("#box-pick").addEventListener("change", e => apply((_, c) => { c.box = e.target.checked; }));
+      const ot = dlg.querySelector("#odd-topic");
+      ot && ot.addEventListener("change", () => apply((_, c) => { c.ot = ot.value.trim() || null; }));
     });
 }
 
@@ -1097,6 +1270,7 @@ view.addEventListener("input", e => {
   if (t.dataset.sf === "color") { const s = subj(t.dataset.id); if (s) { s.color = t.value; persist(["config"]); t.closest(".subj-row").querySelector(".chip").style.cssText = chipStyle(t.value); } }
   if (t.id === "tpl-name") { const tp = tplById(ui.tplId); if (tp) { tp.name = t.value; persist(["config"]); view.querySelector(".sheet-head h1").textContent = t.value; } }
   if (t.id === "set-class") { state.settings.className = t.value; persist(["config"]); }
+  if (t.dataset.cat && t.dataset.cat !== "color") { state.settings.categories[Number(t.dataset.i)][t.dataset.cat] = t.value; persist(["config"]); }
   if (t.dataset.set === "sem" && t.dataset.f === "name") { state.settings.semesters[Number(t.dataset.i)].name = t.value; persist(["config"]); }
   if (t.dataset.set === "hol" && t.dataset.f === "name") { state.settings.holidays[Number(t.dataset.i)].name = t.value; persist(["config"]); }
 });
@@ -1112,6 +1286,24 @@ view.addEventListener("change", async e => {
     return;
   }
   if (t.dataset.sf === "color" || t.dataset.sf === "name") { pushUndo(); render(); return; }
+  if (t.dataset.cat === "color") {
+    mutate(() => {
+      const k = state.settings.categories[Number(t.dataset.i)], old = String(k.color).toLowerCase();
+      state.subjects.forEach(s => { if (String(s.color).toLowerCase() === old) s.color = t.value; });
+      k.color = t.value;
+    }, ["config"]);
+    toast("이 유형의 과목 색도 함께 바꿨어요"); return;
+  }
+  if (t.dataset.cat) { pushUndo(); render(); return; }
+  if (t.dataset.target) {
+    mutate(() => {
+      const sem = state.settings.semesters.filter(x => x.start && x.end)[ui.sem];
+      const tg = state.settings.targets || (state.settings.targets = {});
+      const m = tg[sem.start] || (tg[sem.start] = {});
+      const v = parseInt(t.value, 10);
+      if (v > 0) m[t.dataset.target] = v; else delete m[t.dataset.target];
+    }, ["config"]); return;
+  }
   if (t.id === "set-students") {
     mutate(() => {
       const old = [...state.settings.students];
@@ -1235,6 +1427,16 @@ view.addEventListener("click", async e => {
     case "att-day": { const dt = parse(b.dataset.date); openAttDialog(b.dataset.id, [{ ws: mondayOf(dt), d: (dt.getDay() + 6) % 7 }], "출결"); break; }
     case "mprev": case "mnext": ui.month = new Date(ui.month.getFullYear(), ui.month.getMonth() + (a === "mprev" ? -1 : 1), 1); render(); break;
     case "mthis": ui.month = null; render(); break;
+    case "sem-pick": ui.sem = Number(b.dataset.i); render(); break;
+    case "coltype": mutate(() => { const w = ensureWeek(); w.colTypes = w.colTypes || ["memo", "memo", "memo", "memo"]; const j = Number(b.dataset.j); w.colTypes[j] = w.colTypes[j] === "check" ? "memo" : "check"; }, [wk]);
+      toast(curWeek().colTypes[Number(b.dataset.j)] === "check" ? "체크리스트 칸으로 바꿨어요. 학생 칸을 누르면 체크돼요" : "메모 칸으로 바꿨어요"); break;
+    case "chk": mutate(() => { const w = ensureWeek(); w.marks = w.marks || {}; const arr = w.marks[b.dataset.id] || (w.marks[b.dataset.id] = ["", "", "", ""]); const j = Number(b.dataset.j); arr[j] = arr[j] ? "" : "✔"; }, [wk]); break;
+    case "cat-add": mutate(() => state.settings.categories.push({ id: "c_" + uid(), name: "새 유형", color: "#fbd3dc", topic: "", desc: "" }), ["config"]); break;
+    case "cat-del": {
+      const k = state.settings.categories[Number(b.dataset.i)];
+      if (!(await ask(`'${k.name}' 유형을 삭제할까요?`, "과목 색은 그대로이고, 이 유형의 단원 및 주제 기본값만 없어져요.", "삭제", true))) break;
+      mutate(() => state.settings.categories.splice(Number(b.dataset.i), 1), ["config"]); break;
+    }
     case "open-day": mutate(() => { const w = ensureWeek(); w.open = w.open || []; w.open[Number(b.dataset.d)] = true; }, [wk]); break;
     case "close-day": mutate(() => { const w = ensureWeek(); w.open[Number(b.dataset.d)] = false; }, [wk]); break;
     case "copy-prev": {
@@ -1289,7 +1491,7 @@ function saveAsTemplate() {
     <div class="acts"><button class="btn" data-x="over">'${esc(base.name)}'에 덮어쓰기</button><button class="btn primary" data-x="new">새 템플릿으로 저장</button></div>`,
     (dlg, close) => dlg.addEventListener("click", async e => {
       const x = e.target.closest("[data-x]"); if (!x) return;
-      const days = clone(w.days).map(d => ({ ...d, cells: d.cells.map(c => ({ s: c.s, t: c.t, n: c.n, span: c.span || 1, box: !!c.box })) }));
+      const days = clone(w.days).map(d => ({ ...d, cells: d.cells.map(c => ({ s: c.s, t: c.t, n: c.n, span: c.span || 1 })) }));
       if (x.dataset.x === "new") {
         const name = dlg.querySelector("#nt-name").value.trim() || "새 템플릿";
         close(); mutate(() => state.templates.push({ id: "t_" + uid(), name, days }), ["config"]); toast(`'${name}' 템플릿을 만들었어요`);
