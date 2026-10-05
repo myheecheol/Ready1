@@ -255,6 +255,15 @@ table.hrs input { width: 64px; text-align: center; border: 1px solid var(--paper
 .frame.hrsw-frame { min-width: 640px; }
 .cat-row { display: grid; grid-template-columns: auto 110px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
 .sw.cat { width: auto; height: 22px; border-radius: 999px; padding: 0 9px; font: 600 11px var(--font-ui); color: #222; }
+.steps { margin: 0; padding-left: 20px; display: grid; gap: 10px; }
+.steps li { display: grid; gap: 6px; padding-left: 4px; }
+.steps li::marker { color: var(--accent); font-weight: 600; }
+.steps a { color: var(--accent); }
+.sync-ok { margin: 0; font-weight: 600; color: #2e7d4f; display: flex; align-items: center; gap: 6px; }
+.sync-ok::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #2e9d5b; }
+.sync-err { margin: 0; color: var(--danger); font-size: 13px; }
+.qr-box { justify-self: center; background: #fff; padding: 10px; border-radius: 10px; line-height: 0; }
+.qr-box img, .qr-box canvas { display: block; }
 .empty-note { color: var(--paper-sub); font: 13px var(--font-ui); padding: 12px 2px; }
 
 /* ── 패널(과목·템플릿·설정) ── */
@@ -511,11 +520,16 @@ const ui = { tab: "week", ws: null, day: null, view: "auto", tplId: null, month:
 try { Object.assign(ui, JSON.parse(localStorage.getItem(UI_KEY) || "{}"), { ws: null, day: null, month: null }); } catch {}
 const saveUI = () => { try { localStorage.setItem(UI_KEY, JSON.stringify({ tab: ui.tab, view: ui.view, tplId: ui.tplId })); } catch {} };
 
-let DB = null, DL = null;
+/* 저장 위치(BACKEND)
+   · Claude 링크로 열면: Claude 계정 저장소
+   · 공개 주소로 열면: 설정에서 연결한 구글 시트(Apps Script 웹 앱) — 휴대폰·학교 PC·노트북이 같은 내용을 씀 */
+let BACKEND = null, DL = null;
+const inClaude = !!(window.claude && typeof window.claude.use === "function");
 const dirty = new Set();
-let flushTimer = null, flushing = false;
+let flushTimer = null, flushing = false, retryDelay = 4000;
 const syncEl = document.getElementById("sync");
 function setSync(text, cls) { syncEl.textContent = text; syncEl.className = "sync " + (cls || ""); }
+const hhmm = () => { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 
 function saveLocal() { try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch {} }
 if (bootMigrated) saveLocal();
@@ -526,30 +540,70 @@ function persist(keys) {
   flushTimer = setTimeout(flush, 700);
 }
 const configDoc = () => ({ v: state.v || 2, settings: state.settings, subjects: state.subjects, templates: state.templates });
+const docId = k => k === "config" ? "config" : "w-" + k.slice(2);
+const keyOf = id => id === "config" ? "config" : "w:" + id.slice(2);
+function docData(k) { if (k === "config") return clone(configDoc()); const w = state.weeks[k.slice(2)]; return w ? clone(w) : null; }
+
 async function flush() {
-  if (!DB) { dirty.clear(); return; }
+  if (!BACKEND) { dirty.clear(); return; }
+  if (!dirty.size) return;
   if (flushing) { clearTimeout(flushTimer); flushTimer = setTimeout(flush, 500); return; }
   flushing = true;
   setSync("저장 중…", "cloud");
   const keys = [...dirty]; dirty.clear();
   try {
-    for (const k of keys) {
-      if (k === "config") await DB.col.doc("config").set(JSON.parse(JSON.stringify(configDoc())));
-      else {
-        const ws = k.slice(2), w = state.weeks[ws], ref = DB.col.doc("w-" + ws);
-        if (w) await ref.set(JSON.parse(JSON.stringify(w))); else await ref.delete();
-      }
-    }
-    setSync("계정에 저장됨", "cloud");
+    await BACKEND.write(keys.map(k => ({ id: docId(k), data: docData(k) })));
+    retryDelay = 4000;
+    setSync(BACKEND.okText(), "cloud");
   } catch (e) {
-    keys.forEach(k => dirty.add(k));
-    setSync("저장 실패 · 이 기기에만 저장됨", "err");
-    if (e && e.code === "unavailable") { clearTimeout(flushTimer); flushTimer = setTimeout(flush, 3000 + Math.random() * 2000); }
+    keys.forEach(k => { if (!dirty.has(k)) dirty.add(k); });
+    setSync(e && e.code === "key" ? "동기화 비밀번호가 맞지 않아요" : "저장 대기 중 · 연결되면 올라가요", "err");
+    clearTimeout(flushTimer);
+    flushTimer = setTimeout(flush, retryDelay + Math.random() * 2000);
+    retryDelay = Math.min(retryDelay * 2, 60000);
   } finally { flushing = false; }
 }
 
+/* 서버에서 받은 문서를 반영(아직 올리지 못한 이 기기의 수정은 건드리지 않음) */
+function applyDocs(docs) {
+  let changed = false;
+  for (const d of docs) {
+    if (dirty.has(keyOf(d.id))) continue;
+    if (d.id === "config") {
+      if (d.data && d.data.settings) { state.v = d.data.v || 1; state.settings = clone(d.data.settings); state.subjects = clone(d.data.subjects); state.templates = clone(d.data.templates); changed = true; }
+    } else if (d.id.startsWith("w-")) {
+      const ws = d.id.slice(2);
+      if (d.data) state.weeks[ws] = clone(d.data); else delete state.weeks[ws];
+      changed = true;
+    }
+  }
+  if (changed && migrate(state)) { dirty.add("config"); Object.keys(state.weeks).forEach(k => dirty.add("w:" + k)); }
+  return changed;
+}
+/* 처음 연결: 서버가 비어 있으면 이 기기 내용을 올리고, 아니면 서버 내용을 받고 이 기기에만 있는 주는 올림 */
+function initialSync(docs) {
+  if (!docs.some(d => d.data)) {
+    dirty.add("config");
+    Object.keys(state.weeks).forEach(k => dirty.add("w:" + k));
+  } else {
+    const remote = new Set(docs.map(d => d.id));
+    applyDocs(docs);
+    Object.keys(state.weeks).forEach(k => { if (!remote.has("w-" + k)) dirty.add("w:" + k); });
+  }
+  undoStack.length = 0;
+  saveLocal();
+  render();
+  if (dirty.size) flush();
+}
+
+/* 입력 중이면 다시 그리기를 미룸 */
+let renderPending = false;
+const isEditing = () => { const a = document.activeElement; return !!(document.querySelector(".scrim") || (a && a.closest && a.closest(".ed, input, textarea, select"))); };
+function safeRender() { if (isEditing()) { renderPending = true; return; } renderPending = false; render(); }
+function flushPendingRender() { setTimeout(() => { if (renderPending && !isEditing()) { renderPending = false; render(); } }, 60); }
+
 async function connectCloud() {
-  if (!window.claude || typeof window.claude.use !== "function") return;
+  if (!inClaude) return;
   try {
     const [db, user] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
     window.claude.use("downloads").then(d => { DL = d; }).catch(() => {});
@@ -558,29 +612,108 @@ async function connectCloud() {
     if (!id) return;
     const col = db.collection("data/users/" + id);
     const snap = await col.limit(1000).get();
-    DB = { col };
-    if (snap.empty) {
-      dirty.add("config");
-      Object.keys(state.weeks).forEach(k => dirty.add("w:" + k));
-    } else {
-      const remoteWeeks = new Set();
-      for (const d of snap.docs) {
-        const data = d.data();
-        if (d.id === "config" && data && data.settings) {
-          state.v = data.v || 1; state.settings = clone(data.settings); state.subjects = clone(data.subjects); state.templates = clone(data.templates);
-        } else if (d.id.startsWith("w-") && data) {
-          const ws = d.id.slice(2); state.weeks[ws] = clone(data); remoteWeeks.add(ws);
-        }
-      }
-      Object.keys(state.weeks).forEach(k => { if (!remoteWeeks.has(k)) dirty.add("w:" + k); });
-      if (migrate(state)) { dirty.add("config"); Object.keys(state.weeks).forEach(k => dirty.add("w:" + k)); }
-    }
-    saveLocal();
+    BACKEND = {
+      kind: "claude",
+      okText: () => "계정에 저장됨",
+      async write(ops) { for (const o of ops) { const ref = col.doc(o.id); if (o.data) await ref.set(o.data); else await ref.delete(); } }
+    };
+    initialSync(snap.docs.map(d => ({ id: d.id, data: d.data() || null })));
     setSync("계정에 저장됨", "cloud");
-    render();
-    if (dirty.size) flush();
   } catch { setSync("이 기기에 저장", ""); }
 }
+
+/* ── 구글 시트(Apps Script) 동기화 ── */
+const SYNC_LS = "weekly-plan-sync";
+let syncCfg = null, pulling = false, lastPull = 0;
+try { syncCfg = JSON.parse(localStorage.getItem(SYNC_LS) || "null"); } catch {}
+const saveSyncCfg = () => { try { if (syncCfg) localStorage.setItem(SYNC_LS, JSON.stringify(syncCfg)); else localStorage.removeItem(SYNC_LS); } catch {} };
+
+async function sheetCall(cfg, method, body) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 25000);
+  try {
+    const r = method === "GET"
+      ? await fetch(`${cfg.url}${cfg.url.includes("?") ? "&" : "?"}key=${encodeURIComponent(cfg.key)}&since=${body.since}&_=${Date.now()}`, { signal: ctl.signal })
+      : await fetch(cfg.url, { method: "POST", body: JSON.stringify({ key: cfg.key, ...body }), signal: ctl.signal });
+    const j = await r.json();
+    if (!j.ok) throw Object.assign(new Error(j.error || "error"), { code: j.error });
+    return j;
+  } finally { clearTimeout(timer); }
+}
+function sheetBackend() {
+  return {
+    kind: "sheet",
+    okText: () => `시트와 동기화됨 · ${hhmm()}`,
+    async write(ops) {
+      const j = await sheetCall(syncCfg, "POST", { ops });
+      Object.assign(syncCfg.t, j.ts || {});
+      saveSyncCfg();
+    }
+  };
+}
+async function connectSheet() {
+  if (inClaude || !syncCfg || !syncCfg.url || !syncCfg.key) return { ok: false };
+  setSync("시트에 연결 중…", "cloud");
+  try {
+    const j = await sheetCall(syncCfg, "GET", { since: 0 });
+    syncCfg.t = {};
+    j.docs.forEach(d => { syncCfg.t[d.id] = d.t; });
+    syncCfg.since = j.now; lastPull = Date.now();
+    saveSyncCfg();
+    BACKEND = sheetBackend();
+    initialSync(j.docs);
+    if (!dirty.size) setSync(BACKEND.okText(), "cloud");
+    return { ok: true, count: j.docs.filter(d => d.data).length };
+  } catch (e) {
+    BACKEND = null;
+    setSync(e.code === "key" ? "동기화 비밀번호가 맞지 않아요" : "시트에 연결하지 못했어요 · 이 기기에만 저장", "err");
+    return { ok: false, code: e.code || (e.name === "AbortError" ? "timeout" : "network") };
+  }
+}
+async function pullSheet(force) {
+  if (!BACKEND || BACKEND.kind !== "sheet" || pulling) return;
+  if (!force && Date.now() - lastPull < 15000) return;
+  pulling = true;
+  try {
+    if (dirty.size) await flush();
+    const j = await sheetCall(syncCfg, "GET", { since: Math.max(0, (syncCfg.since || 0) - 60000) });
+    lastPull = Date.now();
+    const fresh = j.docs.filter(d => !(syncCfg.t[d.id] >= d.t) && !dirty.has(keyOf(d.id)));
+    fresh.forEach(d => { syncCfg.t[d.id] = d.t; });
+    syncCfg.since = j.now;
+    saveSyncCfg();
+    if (fresh.length && applyDocs(fresh)) {
+      undoStack.length = 0;
+      saveLocal();
+      safeRender();
+      toast("다른 기기에서 고친 내용을 불러왔어요");
+      if (dirty.size) flush();
+    }
+    if (!dirty.size && !flushing) setSync(BACKEND.okText(), "cloud");
+  } catch (e) {
+    setSync(e.code === "key" ? "동기화 비밀번호가 맞지 않아요" : "동기화 대기 중 · 인터넷 연결을 확인하세요", "err");
+  } finally { pulling = false; }
+}
+setInterval(() => { if (document.visibilityState === "visible") pullSheet(); }, 30000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") pullSheet(true); });
+window.addEventListener("online", () => { flush(); pullSheet(true); });
+window.addEventListener("focus", () => pullSheet());
+
+/* 다른 기기 연결 링크: 주소#connect=… 를 열면 자동으로 연결 */
+const encodeLink = cfg => btoa(unescape(encodeURIComponent(JSON.stringify({ u: cfg.url, k: cfg.key })))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+function decodeLink(s) {
+  try { const o = JSON.parse(decodeURIComponent(escape(atob(s.replace(/-/g, "+").replace(/_/g, "/"))))); return o && o.u && o.k ? { url: o.u, key: o.k } : null; } catch { return null; }
+}
+const connectLink = () => `${location.origin}${location.pathname}#connect=${encodeLink(syncCfg)}`;
+let linkConnect = null;
+if (!inClaude && location.hash.startsWith("#connect=")) {
+  linkConnect = decodeLink(location.hash.slice(9));
+  try { history.replaceState(null, "", location.pathname + location.search); } catch {}
+  if (linkConnect) { syncCfg = { url: linkConnect.url, key: linkConnect.key, t: {}, since: 0 }; saveSyncCfg(); }
+}
+
+/* scripts/build.mjs가 sync/apps-script.gs 내용으로 채움 */
+const APPS_SCRIPT_CODE = /*@APPS_SCRIPT@*/"";
 
 /* ───────── 되돌리기 ───────── */
 const undoStack = [];
@@ -1101,14 +1234,76 @@ function renderSettings() {
     <div class="rows"><h3>${y}년 공휴일 (체크를 끄면 휴일에서 빠져요)</h3><div class="holi-list">${built || '<div>이 연도의 공휴일 자료가 없어요. 학교 휴일로 직접 추가하세요.</div>'}</div>
       <p class="hint">2026–2028년 공휴일과 대체공휴일이 들어 있어요. 새로 정해지는 임시공휴일은 학교 휴일로 추가하세요.</p></div>
   </section>
+  ${renderSyncPanel()}
   <section class="panel">
     <h2>백업과 옮기기</h2>
-    <p class="hint">${DB ? "지금은 계정에 저장되고 있어서 다른 기기에서 이 페이지를 열어도 같은 내용이 보여요." : "지금은 이 기기(브라우저)에만 저장돼요. 다른 기기로 옮기려면 내보낸 파일을 가져오세요."}</p>
+    <p class="hint">${BACKEND ? (BACKEND.kind === "sheet" ? "구글 시트에 저장되고 있어요. 그래도 학기마다 한 번씩 파일로 내보내 두면 안전해요." : "지금은 계정에 저장되고 있어서 다른 기기에서 이 페이지를 열어도 같은 내용이 보여요.") : "지금은 이 기기(브라우저)에만 저장돼요. 다른 기기와 함께 쓰려면 위의 기기 간 동기화를 연결하세요."}</p>
     <div class="row"><button class="btn primary" data-act="export">전체 내보내기 (JSON)</button>
       <label class="btn">파일 가져오기<input type="file" accept=".json,application/json" id="import-file" hidden></label>
       <button class="btn" data-act="import-paste">붙여넣어 가져오기</button></div>
     <div class="row"><button class="btn danger" data-act="reset-all">처음 상태로 초기화</button></div>
   </section></div>`;
+}
+
+function renderSyncPanel() {
+  if (inClaude) return "";
+  if (BACKEND && BACKEND.kind === "sheet") {
+    return `<section class="panel">
+      <h2>기기 간 동기화</h2>
+      <p class="sync-ok">구글 시트와 연결돼 있어요</p>
+      <p class="hint">이 기기에서 고친 내용은 바로 시트에 올라가고, 다른 기기에서 고친 내용은 30초쯤 안에, 또는 앱을 다시 열 때 들어와요. 같은 칸을 두 기기에서 동시에 고치면 나중에 저장한 쪽이 남아요.</p>
+      <div class="row"><button class="btn primary" data-act="sync-link">다른 기기 연결하기</button><button class="btn" data-act="sync-now">지금 동기화</button><button class="btn danger" data-act="sync-off">이 기기 연결 끊기</button></div>
+    </section>`;
+  }
+  const d = ui.syncDraft || { url: (syncCfg && syncCfg.url) || "", key: (syncCfg && syncCfg.key) || "" };
+  return `<section class="panel">
+    <h2>기기 간 동기화</h2>
+    ${syncCfg ? `<p class="sync-err">저장해 둔 시트에 연결하지 못했어요. 주소와 비밀번호를 확인하고 다시 연결해 주세요.</p>` : ""}
+    <p class="hint">휴대폰·학교 컴퓨터·노트북에서 같은 내용을 쓰려면, 내 구글 계정의 스프레드시트에 저장하도록 연결하세요. 처음 한 번만 하면 되고, 다른 기기는 연결 링크로 바로 이어져요.</p>
+    <ol class="steps">
+      <li><span>동기화 비밀번호를 정해서 적어요.</span><input class="field" id="sync-key" value="${esc(d.key)}" placeholder="예: 6-1주간학습!2026" autocomplete="off" spellcheck="false"></li>
+      <li><span>비밀번호가 들어간 Apps Script 코드를 복사해요.</span><button class="btn" data-act="copy-gs">코드 복사</button></li>
+      <li><span><a href="https://sheets.new" target="_blank" rel="noopener">새 구글 스프레드시트</a>를 열고 <b>확장 프로그램 → Apps Script</b>에서 원래 코드를 지우고 붙여넣은 뒤 저장(💾)해요.</span></li>
+      <li><span><b>배포 → 새 배포</b> → 유형 선택(톱니바퀴)에서 <b>웹 앱</b> → 실행: <b>나</b>, 액세스 권한: <b>모든 사용자</b> → 배포. 권한 확인 창이 뜨면 내 계정 → 고급 → '(안전하지 않음)으로 이동' → 허용을 눌러요.</span></li>
+      <li><span>나온 <b>웹 앱 URL</b>을 붙여넣고 연결해요.</span><div class="row"><input class="field grow" id="sync-url" value="${esc(d.url)}" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" spellcheck="false"><button class="btn primary" data-act="sync-connect">연결</button></div></li>
+    </ol>
+    <p class="hint">시트가 비어 있으면 이 기기 내용을 올리고, 이미 내용이 있으면 시트 내용을 불러와요. 비밀번호는 이 기기와 내 구글 시트에만 저장돼요.</p>
+  </section>`;
+}
+
+function showConnectLink() {
+  const link = connectLink();
+  openDialog(`<h2>다른 기기 연결하기</h2>
+    <p class="hint" style="font-size:13.5px">휴대폰 카메라로 QR을 찍거나, 아래 링크를 다른 기기에서 열면 바로 연결돼요. 링크에 동기화 비밀번호가 들어 있으니 나에게 보내기처럼 나만 보는 곳으로만 보내세요.</p>
+    <div id="qr-box" class="qr-box" aria-label="연결 링크 QR 코드"></div>
+    <textarea class="field" id="link-text" readonly style="min-height:90px;font-size:12px">${esc(link)}</textarea>
+    <div class="acts"><button class="btn" data-x="close">닫기</button><button class="btn primary" data-x="copy">링크 복사</button></div>`,
+    (dlg, close) => {
+      dlg.addEventListener("click", e => {
+        if (e.target.closest("[data-x=close]")) close();
+        if (e.target.closest("[data-x=copy]")) {
+          const ta = dlg.querySelector("#link-text");
+          navigator.clipboard.writeText(link).then(() => toast("링크를 복사했어요")).catch(() => { ta.focus(); ta.select(); toast("선택했어요. 복사하세요"); });
+        }
+      });
+      loadQR().then(Q => {
+        const box = dlg.querySelector("#qr-box");
+        if (!Q || !box) { if (box) box.hidden = true; return; }
+        new Q(box, { text: link, width: 196, height: 196, correctLevel: Q.CorrectLevel.M });
+      });
+    });
+}
+let qrPromise = null;
+function loadQR() {
+  if (window.QRCode) return Promise.resolve(window.QRCode);
+  if (!qrPromise) qrPromise = new Promise(res => {
+    const sc = document.createElement("script");
+    sc.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
+    sc.onload = () => res(window.QRCode || null);
+    sc.onerror = () => res(null);
+    document.head.appendChild(sc);
+  });
+  return qrPromise;
 }
 
 /* ───────── 모달 ───────── */
@@ -1117,7 +1312,7 @@ function openDialog(html, onMount) {
   scrim.className = "scrim";
   scrim.innerHTML = `<div class="dialog" role="dialog" aria-modal="true">${html}</div>`;
   document.body.appendChild(scrim);
-  const close = () => { scrim.remove(); document.removeEventListener("keydown", onKey); };
+  const close = () => { scrim.remove(); document.removeEventListener("keydown", onKey); flushPendingRender(); };
   const onKey = e => { if (e.key === "Escape") close(); };
   document.addEventListener("keydown", onKey);
   scrim.addEventListener("click", e => { if (e.target === scrim) close(); });
@@ -1256,6 +1451,7 @@ view.addEventListener("input", e => {
   if (t.dataset.sf === "color") { const s = subj(t.dataset.id); if (s) { s.color = t.value; persist(["config"]); t.closest(".subj-row").querySelector(".chip").style.cssText = chipStyle(t.value); } }
   if (t.id === "tpl-name") { const tp = tplById(ui.tplId); if (tp) { tp.name = t.value; persist(["config"]); view.querySelector(".sheet-head h1").textContent = t.value; } }
   if (t.id === "set-class") { state.settings.className = t.value; persist(["config"]); }
+  if (t.id === "sync-url" || t.id === "sync-key") { ui.syncDraft = { url: document.getElementById("sync-url").value, key: document.getElementById("sync-key").value }; }
   if (t.dataset.cat && t.dataset.cat !== "color") { state.settings.categories[Number(t.dataset.i)][t.dataset.cat] = t.value; persist(["config"]); }
   if (t.dataset.set === "sem" && t.dataset.f === "name") { state.settings.semesters[Number(t.dataset.i)].name = t.value; persist(["config"]); }
   if (t.dataset.set === "hol" && t.dataset.f === "name") { state.settings.holidays[Number(t.dataset.i)].name = t.value; persist(["config"]); }
@@ -1459,6 +1655,30 @@ view.addEventListener("click", async e => {
     case "hol-add": { const t = ymd(todayKST()); mutate(() => state.settings.holidays.push({ name: "재량휴업일", start: t, end: t, vacation: false }), ["config"]); break; }
     case "hol-del": mutate(() => state.settings.holidays.splice(Number(b.dataset.i), 1), ["config"]); break;
     case "export": exportAll(); break;
+    case "copy-gs": {
+      const key = (document.getElementById("sync-key").value || "").trim();
+      if (!key) { toast("먼저 동기화 비밀번호를 적어 주세요"); document.getElementById("sync-key").focus(); break; }
+      const code = APPS_SCRIPT_CODE.replace("const SECRET = '여기에-비밀번호를-적으세요';", `const SECRET = ${JSON.stringify(key)};`);
+      navigator.clipboard.writeText(code).then(() => toast("코드를 복사했어요. Apps Script에 붙여넣으세요")).catch(() => showExportText(code, "Apps Script 코드", "아래 코드를 모두 선택해 복사한 뒤 Apps Script에 붙여넣으세요."));
+      break;
+    }
+    case "sync-connect": {
+      const url = document.getElementById("sync-url").value.trim(), key = document.getElementById("sync-key").value.trim();
+      if (!key) { toast("동기화 비밀번호를 적어 주세요"); break; }
+      if (!/^https:\/\/script\.google(usercontent)?\.com\/.+/.test(url)) { toast("웹 앱 주소는 https://script.google.com/ 으로 시작해요"); break; }
+      syncCfg = { url, key, t: {}, since: 0 }; saveSyncCfg();
+      b.disabled = true; b.textContent = "연결 중…";
+      const r = await connectSheet();
+      if (r.ok) { ui.syncDraft = null; toast(r.count ? "시트에 있던 내용을 불러왔어요" : "이 기기 내용을 시트에 올렸어요"); }
+      else toast(r.code === "key" ? "비밀번호가 Apps Script 코드의 SECRET과 달라요" : "연결하지 못했어요. 웹 앱 주소와 '액세스 권한: 모든 사용자'를 확인하세요");
+      render(); break;
+    }
+    case "sync-now": await pullSheet(true); toast("동기화했어요"); render(); break;
+    case "sync-link": showConnectLink(); break;
+    case "sync-off": {
+      if (!(await ask("이 기기의 연결을 끊을까요?", "이 기기에 있는 내용은 그대로 남고, 다른 기기와 시트의 내용도 지워지지 않아요. 이후 이 기기에서 고친 내용은 공유되지 않아요.", "연결 끊기", true))) break;
+      BACKEND = null; syncCfg = null; saveSyncCfg(); setSync("이 기기에 저장", ""); render(); break;
+    }
     case "import-paste": importPasteDialog(); break;
     case "reset-all": {
       if (!(await ask("처음 상태로 초기화할까요?", "모든 주, 출결, 템플릿, 과목, 설정이 예시 상태로 돌아가요. 필요하면 먼저 내보내기로 백업하세요.", "초기화", true))) break;
@@ -1499,8 +1719,8 @@ function exportAll() {
   }
   showExportText(data);
 }
-function showExportText(data) {
-  openDialog(`<h2>백업 내용</h2><p class="hint">아래 내용을 복사해 메모장 등에 저장해 두세요. 가져올 때 그대로 붙여넣으면 돼요.</p>
+function showExportText(data, title = "백업 내용", hint = "아래 내용을 복사해 메모장 등에 저장해 두세요. 가져올 때 그대로 붙여넣으면 돼요.") {
+  openDialog(`<h2>${esc(title)}</h2><p class="hint">${esc(hint)}</p>
     <textarea class="field" id="exp-text" readonly>${esc(data)}</textarea><div class="acts"><button class="btn primary" data-x="copy">복사</button></div>`,
     dlg => dlg.addEventListener("click", e => {
       if (!e.target.closest("[data-x=copy]")) return;
@@ -1524,6 +1744,7 @@ async function importText(text) {
   toast("가져왔어요");
 }
 
+view.addEventListener("focusout", flushPendingRender);
 let lastNarrow = isNarrow();
 window.addEventListener("resize", () => { const n = isNarrow(); if (n !== lastNarrow) { lastNarrow = n; if (!document.activeElement || !document.activeElement.closest(".ed")) render(); } });
 window.addEventListener("beforeprint", () => { if (useCards()) { const v = ui.view; ui.view = "table"; render(); ui.view = v; } });
@@ -1531,5 +1752,9 @@ window.addEventListener("afterprint", () => render());
 
 render();
 connectCloud();
+if (syncCfg) connectSheet().then(r => {
+  if (linkConnect) toast(r.ok ? "이 기기를 연결했어요. 이제 다른 기기와 같은 내용이 보여요" : "연결 링크로 연결하지 못했어요. 설정에서 확인해 주세요");
+  if (ui.tab === "set") safeRender();
+});
 })();
 </script>

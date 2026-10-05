@@ -1,6 +1,11 @@
 // app/weekly.html(본문)을 감싸서 GitHub Pages 등에 올릴 수 있는 index.html을 만듭니다.
 import { readFileSync, writeFileSync } from "node:fs";
-const body = readFileSync(new URL("../app/weekly.html", import.meta.url), "utf8");
+const gs = readFileSync(new URL("../sync/apps-script.gs", import.meta.url), "utf8");
+const marker = '/*@APPS_SCRIPT@*/""';
+const src = readFileSync(new URL("../app/weekly.html", import.meta.url), "utf8");
+if (!src.includes(marker)) throw new Error("APPS_SCRIPT marker missing");
+// </script>가 코드 안에 있으면 페이지가 깨지므로 이스케이프
+const body = src.replace(marker, () => JSON.stringify(gs).replace(/<\//g, "<\\/"));
 const head = `<!doctype html>
 <html lang="ko">
 <head>
