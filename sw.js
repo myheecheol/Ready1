@@ -1,5 +1,5 @@
 // 오프라인에서도 열리도록 앱 파일을 캐시합니다. 앱을 고치면 VERSION을 올려 주세요.
-const VERSION = "weekly-plan-v5";
+const VERSION = "weekly-plan-v6";
 const FILES = ["./", "./index.html", "./manifest.webmanifest", "./icon.svg", "./icon-192.png", "./icon-512.png"];
 // 이 주소들만 캐시(앱 파일, 글꼴, QR 라이브러리). 구글 시트 동기화 요청은 절대 캐시하지 않음
 const CACHE_HOSTS = ["fonts.googleapis.com", "fonts.gstatic.com", "cdnjs.cloudflare.com"];

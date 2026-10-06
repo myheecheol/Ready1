@@ -535,7 +535,7 @@ const saveUI = () => { try { localStorage.setItem(UI_KEY, JSON.stringify({ tab: 
 let BACKEND = null, DL = null;
 const inClaude = !!(window.claude && typeof window.claude.use === "function");
 const dirty = new Set();
-let flushTimer = null, flushing = false, retryDelay = 4000;
+let flushTimer = null, flushing = false, retryDelay = 4000, pubError = null, lastSyncError = null;
 const syncEl = document.getElementById("sync");
 function setSync(text, cls) { syncEl.textContent = text; syncEl.className = "sync " + (cls || ""); }
 const hhmm = () => { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
@@ -570,22 +570,26 @@ async function flush() {
   const keys = [...dirty]; dirty.clear();
   let pubHash = null;
   const ops = [];
-  for (const k of keys) {
-    if (k === "pub") {
-      if (BACKEND.kind !== "sheet") continue;
-      const pub = buildPub(), h = strHash(JSON.stringify(pub));
-      if (h === syncCfg.pubHash) continue;
-      pubHash = h; ops.push({ id: "pub", data: { ...pub, at: Date.now() } });
-    } else ops.push({ id: docId(k), data: docData(k) });
-  }
   try {
+    for (const k of keys) {
+      if (k === "pub") {
+        if (BACKEND.kind !== "sheet") continue;
+        let pub;
+        try { pub = buildPub(); } catch (err) { console.error("학생 화면 게시본을 만들지 못함", err); pubError = String(err && err.message || err); continue; }
+        pubError = null;
+        const h = strHash(JSON.stringify(pub));
+        if (h === syncCfg.pubHash) continue;
+        pubHash = h; ops.push({ id: "pub", data: { ...pub, at: Date.now() } });
+      } else ops.push({ id: docId(k), data: docData(k) });
+    }
     if (ops.length) await BACKEND.write(ops);
     if (pubHash) { syncCfg.pubHash = pubHash; syncCfg.pubAt = Date.now(); saveSyncCfg(); }
     retryDelay = 4000;
     setSync(BACKEND.okText(), "cloud");
   } catch (e) {
     keys.forEach(k => { if (!dirty.has(k)) dirty.add(k); });
-    setSync(e && e.code === "key" ? "동기화 비밀번호가 맞지 않아요" : "저장 대기 중 · 연결되면 올라가요", "err");
+    lastSyncError = e;
+    setSync(e && e.code === "key" ? "동기화 비밀번호가 맞지 않아요" : e && e.code === "html" ? "Apps Script 권한 확인이 필요해요" : "저장 대기 중 · 연결되면 올라가요", "err");
     clearTimeout(flushTimer);
     flushTimer = setTimeout(flush, retryDelay + Math.random() * 2000);
     retryDelay = Math.min(retryDelay * 2, 60000);
@@ -670,7 +674,10 @@ async function sheetCall(cfg, method, body) {
     const r = method === "GET"
       ? await fetch(`${cfg.url}${cfg.url.includes("?") ? "&" : "?"}key=${encodeURIComponent(cfg.key)}&since=${body.since}&_=${Date.now()}`, { signal: ctl.signal })
       : await fetch(cfg.url, { method: "POST", body: JSON.stringify({ key: cfg.key, ...body }), signal: ctl.signal });
-    const j = await r.json();
+    const text = await r.text();
+    let j;
+    try { j = JSON.parse(text); }
+    catch { throw Object.assign(new Error("Apps Script가 JSON 대신 웹페이지를 돌려줬어요"), { code: "html", detail: text.slice(0, 200) }); }
     if (!j.ok) throw Object.assign(new Error(j.error || "error"), { code: j.error });
     return j;
   } finally { clearTimeout(timer); }
@@ -702,13 +709,14 @@ async function connectSheet() {
     return { ok: true, count: j.docs.filter(d => d.data).length };
   } catch (e) {
     BACKEND = null;
-    setSync(e.code === "key" ? "동기화 비밀번호가 맞지 않아요" : "시트에 연결하지 못했어요 · 이 기기에만 저장", "err");
+    setSync(e.code === "key" ? "동기화 비밀번호가 맞지 않아요" : e.code === "html" ? "Apps Script 권한 확인이 필요해요" : "시트에 연결하지 못했어요 · 이 기기에만 저장", "err");
     return { ok: false, code: e.code || (e.name === "AbortError" ? "timeout" : "network") };
   }
 }
 async function pullSheet(force) {
-  if (!BACKEND || BACKEND.kind !== "sheet" || pulling) return;
-  if (!force && Date.now() - lastPull < 15000) return;
+  if (!BACKEND || BACKEND.kind !== "sheet") return { ok: false, code: "not_connected" };
+  if (pulling) return { ok: false, code: "busy" };
+  if (!force && Date.now() - lastPull < 15000) return { ok: true, skipped: true };
   pulling = true;
   try {
     if (dirty.size) await flush();
@@ -728,8 +736,12 @@ async function pullSheet(force) {
       if (dirty.size) flush();
     }
     if (!dirty.size && !flushing) setSync(BACKEND.okText(), "cloud");
+    lastSyncError = null;
+    return { ok: true, ver: syncCfg.ver };
   } catch (e) {
-    setSync(e.code === "key" ? "동기화 비밀번호가 맞지 않아요" : "동기화 대기 중 · 인터넷 연결을 확인하세요", "err");
+    lastSyncError = e;
+    setSync(e.code === "key" ? "동기화 비밀번호가 맞지 않아요" : e.code === "html" ? "Apps Script 권한 확인이 필요해요" : "동기화 대기 중 · 인터넷 연결을 확인하세요", "err");
+    return { ok: false, code: e.code || (e.name === "AbortError" ? "timeout" : "network") };
   } finally { pulling = false; }
 }
 setInterval(() => { if (document.visibilityState === "visible") pullSheet(); }, 30000);
@@ -866,7 +878,7 @@ function buildPub() {
     const ws = addDays(ws0, 7 * k), key = ymd(ws), w = state.weeks[key] || virtualWeek(ws);
     if (k >= 0) {
       const info = weekInfo(ws);
-      weeks[key] = { n: info.n, vacation: !!info.vacation, days: w.days.map((day, d) => {
+      weeks[key] = { n: info.n, vacation: !!info.vacation, days: (w.days || []).map((day, d) => {
         const date = ymd(addDays(ws, d)), hol = holidayOn(date);
         if (hol && !(w.open && w.open[d])) return { date, holiday: hol.name };
         return { date, count: day.count, periods: layoutCells(day).filter(x => !x.na).map(x => {
@@ -877,7 +889,7 @@ function buildPub() {
     }
     const types = w.colTypes || [], titles = w.colTitles || [];
     for (let j = 0; j < COLS; j++) {
-      const title = (titles[j] || "").trim();
+      const title = String(titles[j] || "").trim();
       if (types[j] === "check" && title) items.push({ id: `${key}|${j}`, ws: key, j, title, due: (w.colDue || [])[j] || "", locked: !!(w.colLocked || [])[j] });
     }
   }
@@ -1506,6 +1518,7 @@ function ask(title, body, okLabel = "확인", danger = false) {
       });
   });
 }
+function toastLong(msg) { toast(msg); clearTimeout(toastTimer); toastTimer = setTimeout(() => { const t = document.querySelector(".toast"); if (t) t.hidden = true; }, 7000); }
 let toastTimer;
 function toast(msg) {
   let t = document.querySelector(".toast");
@@ -1850,7 +1863,19 @@ view.addEventListener("click", async e => {
       else toast(r.code === "key" ? "비밀번호가 Apps Script 코드의 SECRET과 달라요" : "연결하지 못했어요. 웹 앱 주소와 '액세스 권한: 모든 사용자'를 확인하세요");
       render(); break;
     }
-    case "sync-now": await pullSheet(true); toast("동기화했어요"); render(); break;
+    case "sync-now": {
+      b.disabled = true; b.textContent = "확인 중…";
+      const r = await pullSheet(true);
+      if (r && r.ok) await flush();
+      const msg = !r ? "시트에 연결돼 있지 않아요"
+        : r.ok ? (r.ver >= 2 ? (pubError ? "동기화는 됐지만 학생 화면 게시본을 만들지 못했어요: " + pubError : "동기화했어요 · Apps Script 새 버전 확인") : "동기화는 되지만 Apps Script가 아직 예전 코드예요. 배포 관리에서 '새 버전'으로 배포했는지 확인해 주세요")
+        : r.code === "html" ? "Apps Script가 권한 승인을 기다리고 있어요. Apps Script 편집기에서 배포 관리 → 수정 → 배포를 다시 눌러 권한을 허용해 주세요"
+        : r.code === "key" ? "비밀번호가 Apps Script 코드의 SECRET과 달라요. 새 코드 복사로 받은 코드를 그대로 붙여넣었는지 확인해 주세요"
+        : r.code === "busy" ? "이미 동기화 중이에요. 잠시 뒤 다시 눌러 주세요"
+        : r.code === "timeout" ? "Apps Script가 응답하지 않아요. 잠시 뒤 다시 눌러 주세요"
+        : "Apps Script에 연결하지 못했어요. 인터넷과 웹 앱 주소를 확인해 주세요";
+      toastLong(msg); render(); break;
+    }
     case "sync-link": showConnectLink(); break;
     case "student-link": showStudentLink(); break;
     case "copy-gs-update": {
