@@ -264,6 +264,13 @@ table.hrs input { width: 64px; text-align: center; border: 1px solid var(--paper
 .sync-err { margin: 0; color: var(--danger); font-size: 13px; }
 .qr-box { justify-self: center; background: #fff; padding: 10px; border-radius: 10px; line-height: 0; }
 .qr-box img, .qr-box canvas { display: block; }
+.colsub { display: block; font: 600 9.5px var(--font-ui); color: var(--paper-sub); line-height: 1.1; padding-bottom: 2px; }
+table.roster button.chk.by-s { color: #0f6e4f; }
+.miss-list { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 13px; max-height: 160px; overflow: auto; }
+.miss-list em { color: var(--muted); font-style: normal; }
+.pin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 10px; }
+.pin-grid label { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 13px; }
+.pin-grid input { width: 66px; text-align: center; letter-spacing: .15em; font-variant-numeric: tabular-nums; padding: 4px; }
 .empty-note { color: var(--paper-sub); font: 13px var(--font-ui); padding: 12px 2px; }
 
 /* ── 패널(과목·템플릿·설정) ── */
@@ -459,7 +466,8 @@ function defaultState() {
     },
     subjects,
     templates: [tpl, blank],
-    weeks: {}
+    weeks: {},
+    checks: {}
   };
 }
 
@@ -514,6 +522,7 @@ let state;
 try { state = JSON.parse(localStorage.getItem(LS_KEY) || "null"); } catch { state = null; }
 if (!state || !state.settings || !Array.isArray(state.templates)) state = defaultState();
 state.weeks = state.weeks || {};
+state.checks = state.checks || {};
 const bootMigrated = migrate(state);
 
 const ui = { tab: "week", ws: null, day: null, view: "auto", tplId: null, month: null, sem: null };
@@ -535,14 +544,22 @@ function saveLocal() { try { localStorage.setItem(LS_KEY, JSON.stringify(state))
 if (bootMigrated) saveLocal();
 function persist(keys) {
   keys.forEach(k => dirty.add(k));
+  if (BACKEND && BACKEND.kind === "sheet") dirty.add("pub");
   saveLocal();
   clearTimeout(flushTimer);
   flushTimer = setTimeout(flush, 700);
 }
 const configDoc = () => ({ v: state.v || 2, settings: state.settings, subjects: state.subjects, templates: state.templates });
-const docId = k => k === "config" ? "config" : "w-" + k.slice(2);
-const keyOf = id => id === "config" ? "config" : "w:" + id.slice(2);
-function docData(k) { if (k === "config") return clone(configDoc()); const w = state.weeks[k.slice(2)]; return w ? clone(w) : null; }
+/* 저장 단위: config(설정·과목·템플릿) · w:주 · c:주|칸|학생(체크 1건) · pub(학생 화면용 게시본) */
+const docId = k => k === "config" || k === "pub" ? k : k[0] === "w" ? "w-" + k.slice(2) : "c-" + k.slice(2).replace(/\|/g, "-");
+const keyOf = id => id === "config" || id === "pub" ? id : id.startsWith("w-") ? "w:" + id.slice(2) : "c:" + id.slice(2, 12) + "|" + id.slice(13, 14) + "|" + id.slice(15);
+function docData(k) {
+  if (k === "config") return clone(configDoc());
+  if (k === "pub") return buildPub();
+  if (k[0] === "c") { const c = state.checks[k.slice(2)]; return c ? clone(c) : null; }
+  const w = state.weeks[k.slice(2)]; return w ? clone(w) : null;
+}
+const strHash = str => { let h = 5381; for (let i = 0; i < str.length; i++) h = (h * 33 + str.charCodeAt(i)) | 0; return String(h); };
 
 async function flush() {
   if (!BACKEND) { dirty.clear(); return; }
@@ -551,8 +568,19 @@ async function flush() {
   flushing = true;
   setSync("저장 중…", "cloud");
   const keys = [...dirty]; dirty.clear();
+  let pubHash = null;
+  const ops = [];
+  for (const k of keys) {
+    if (k === "pub") {
+      if (BACKEND.kind !== "sheet") continue;
+      const pub = buildPub(), h = strHash(JSON.stringify(pub));
+      if (h === syncCfg.pubHash) continue;
+      pubHash = h; ops.push({ id: "pub", data: { ...pub, at: Date.now() } });
+    } else ops.push({ id: docId(k), data: docData(k) });
+  }
   try {
-    await BACKEND.write(keys.map(k => ({ id: docId(k), data: docData(k) })));
+    if (ops.length) await BACKEND.write(ops);
+    if (pubHash) { syncCfg.pubHash = pubHash; syncCfg.pubAt = Date.now(); saveSyncCfg(); }
     retryDelay = 4000;
     setSync(BACKEND.okText(), "cloud");
   } catch (e) {
@@ -575,20 +603,27 @@ function applyDocs(docs) {
       const ws = d.id.slice(2);
       if (d.data) state.weeks[ws] = clone(d.data); else delete state.weeks[ws];
       changed = true;
+    } else if (d.id.startsWith("c-")) {
+      const ck = keyOf(d.id).slice(2);
+      if (d.data) state.checks[ck] = clone(d.data); else delete state.checks[ck];
+      changed = true;
     }
   }
   if (changed && migrate(state)) { dirty.add("config"); Object.keys(state.weeks).forEach(k => dirty.add("w:" + k)); }
+  if (changed) migrateChecks().forEach(k => dirty.add(k));
   return changed;
 }
 /* 처음 연결: 서버가 비어 있으면 이 기기 내용을 올리고, 아니면 서버 내용을 받고 이 기기에만 있는 주는 올림 */
 function initialSync(docs) {
-  if (!docs.some(d => d.data)) {
+  if (!docs.some(d => d.data && d.id !== "pub")) {
     dirty.add("config");
     Object.keys(state.weeks).forEach(k => dirty.add("w:" + k));
+    Object.keys(state.checks).forEach(ck => dirty.add("c:" + ck));
   } else {
     const remote = new Set(docs.map(d => d.id));
     applyDocs(docs);
     Object.keys(state.weeks).forEach(k => { if (!remote.has("w-" + k)) dirty.add("w:" + k); });
+    Object.keys(state.checks).forEach(ck => { const k = "c:" + ck; if (!remote.has(docId(k))) dirty.add(k); });
   }
   undoStack.length = 0;
   saveLocal();
@@ -658,10 +693,11 @@ async function connectSheet() {
     const j = await sheetCall(syncCfg, "GET", { since: 0 });
     syncCfg.t = {};
     j.docs.forEach(d => { syncCfg.t[d.id] = d.t; });
-    syncCfg.since = j.now; lastPull = Date.now();
+    syncCfg.since = j.now; syncCfg.ver = j.version || 1; lastPull = Date.now();
     saveSyncCfg();
     BACKEND = sheetBackend();
     initialSync(j.docs);
+    dirty.add("pub"); flush();
     if (!dirty.size) setSync(BACKEND.okText(), "cloud");
     return { ok: true, count: j.docs.filter(d => d.data).length };
   } catch (e) {
@@ -678,6 +714,8 @@ async function pullSheet(force) {
     if (dirty.size) await flush();
     const j = await sheetCall(syncCfg, "GET", { since: Math.max(0, (syncCfg.since || 0) - 60000) });
     lastPull = Date.now();
+    syncCfg.ver = j.version || 1;
+    dirty.add("pub");   // 날짜가 바뀌면 게시본도 바뀜(바뀐 게 없으면 올리지 않음)
     const fresh = j.docs.filter(d => !(syncCfg.t[d.id] >= d.t) && !dirty.has(keyOf(d.id)));
     fresh.forEach(d => { syncCfg.t[d.id] = d.t; });
     syncCfg.since = j.now;
@@ -725,6 +763,8 @@ function undo() {
   const keys = ["config"];
   const all = new Set([...Object.keys(old.weeks), ...Object.keys(state.weeks)]);
   all.forEach(k => { if (JSON.stringify(old.weeks[k]) !== JSON.stringify(state.weeks[k])) keys.push("w:" + k); });
+  old.checks = old.checks || {};
+  new Set([...Object.keys(old.checks), ...Object.keys(state.checks)]).forEach(ck => { if (JSON.stringify(old.checks[ck]) !== JSON.stringify(state.checks[ck])) keys.push("c:" + ck); });
   state = old;
   persist(keys);
   render();
@@ -783,12 +823,66 @@ function virtualWeek(ws) {
   const tpl = defaultTpl();
   let colTypes = ["memo", "memo", "memo", "memo"];
   for (let k = 1; k <= 8; k++) { const pw = state.weeks[ymd(addDays(ws, -7 * k))]; if (pw && pw.colTypes) { colTypes = [...pw.colTypes]; break; } }
-  return { templateId: tpl ? tpl.id : null, days: daysFromTemplate(tpl, weekInfo(ws).n), marks: {}, colTitles: ["", "", "", ""], colTypes, att: {}, memo: "", open: [false, false, false, false, false] };
+  return { templateId: tpl ? tpl.id : null, days: daysFromTemplate(tpl, weekInfo(ws).n), marks: {}, colTitles: ["", "", "", ""], colTypes, colDue: ["", "", "", ""], colLocked: [false, false, false, false], att: {}, memo: "", open: [false, false, false, false, false] };
 }
 const wsKey = () => ymd(ui.ws);
 const curWeek = () => state.weeks[wsKey()] || virtualWeek(ui.ws);
 function ensureWeekFor(ws) { const k = ymd(ws); if (!state.weeks[k]) state.weeks[k] = virtualWeek(ws); return state.weeks[k]; }
 const ensureWeek = () => ensureWeekFor(ui.ws);
+
+/* 체크리스트: 학생·교사 체크 1건 = 문서 1개라서 서로 덮어쓰지 않음 */
+const ckKey = (ws, j, sid) => `${typeof ws === "string" ? ws : ymd(ws)}|${j}|${sid}`;
+const getCheck = (ws, j, sid) => state.checks[ckKey(ws, j, sid)] || null;
+function setCheck(ws, j, sid, on) {
+  const k = ckKey(ws, j, sid);
+  if (on) state.checks[k] = { v: 1, by: "teacher" }; else delete state.checks[k];
+  persist(["c:" + k]);
+}
+/* 예전처럼 주 안에 저장된 체크 표시를 체크 문서로 옮김 */
+function migrateChecks() {
+  const keys = [];
+  for (const [ws, w] of Object.entries(state.weeks)) {
+    if (!w.marks || !w.colTypes) continue;
+    let ch = false;
+    for (const [sid, arr] of Object.entries(w.marks)) for (let j = 0; j < COLS; j++) {
+      if (w.colTypes[j] === "check" && arr && arr[j]) {
+        const k = ckKey(ws, j, sid);
+        if (!state.checks[k]) { state.checks[k] = { v: 1, by: "teacher" }; keys.push("c:" + k); }
+        arr[j] = ""; ch = true;
+      }
+    }
+    if (ch) keys.push("w:" + ws);
+  }
+  return keys;
+}
+function missingFor(ws, j) { return state.settings.students.map((p, i) => ({ p, no: i + 1 })).filter(x => !getCheck(ws, j, x.p.id)); }
+const shortDate = s => s ? `${Number(s.slice(5, 7))}/${Number(s.slice(8, 10))}` : "";
+
+/* 학생·학부모 화면용 게시본: 시간표(메모·TO DO 제외)와 체크리스트 항목. 서버가 이번 주·다음 주만 내보냄 */
+function buildPub() {
+  const ws0 = mondayOf(todayKST());
+  const weeks = {}, items = [];
+  for (let k = -4; k <= 4; k++) {
+    const ws = addDays(ws0, 7 * k), key = ymd(ws), w = state.weeks[key] || virtualWeek(ws);
+    if (k >= 0) {
+      const info = weekInfo(ws);
+      weeks[key] = { n: info.n, vacation: !!info.vacation, days: w.days.map((day, d) => {
+        const date = ymd(addDays(ws, d)), hol = holidayOn(date);
+        if (hol && !(w.open && w.open[d])) return { date, holiday: hol.name };
+        return { date, count: day.count, periods: layoutCells(day).filter(x => !x.na).map(x => {
+          const sj = subj(x.c.s);
+          return { p: x.i + 1, span: x.span, s: sj ? sj.name : "", c: sj ? sj.color : "", t: topicOf(x.c) || "", n: x.c.n || "" };
+        }) };
+      }) };
+    }
+    const types = w.colTypes || [], titles = w.colTitles || [];
+    for (let j = 0; j < COLS; j++) {
+      const title = (titles[j] || "").trim();
+      if (types[j] === "check" && title) items.push({ id: `${key}|${j}`, ws: key, j, title, due: (w.colDue || [])[j] || "", locked: !!(w.colLocked || [])[j] });
+    }
+  }
+  return { v: 1, className: state.settings.className, students: state.settings.students.map((p, i) => ({ id: p.id, no: i + 1, name: p.name })), weeks, items };
+}
 
 /* 출결: 주 문서 안에 att[학생ID][요일번호] = {t: 결석|지각|조퇴, r: 사유} */
 function getAtt(ws, sid, d) { const w = state.weeks[ymd(ws)]; return (w && w.att && w.att[sid] && w.att[sid][d]) || null; }
@@ -1000,13 +1094,21 @@ function renderBottom(w, ws) {
   const types = w.colTypes || ["memo", "memo", "memo", "memo"];
   let rows = state.settings.students.map((p, i) => {
     const mk = (w.marks && w.marks[p.id]) || [];
-    const marks = Array.from({ length: COLS }, (_, j) => types[j] === "check"
-      ? `<td><button class="chk" data-act="chk" data-id="${p.id}" data-j="${j}" aria-pressed="${!!mk[j]}" aria-label="${esc(p.name)} ${esc(titles[j] || j + 1 + "번째 항목")} 체크">${mk[j] ? "✔" : ""}</button></td>`
+    const marks = Array.from({ length: COLS }, (_, j) => {
+      if (types[j] !== "check") return null;
+      const c = getCheck(ws, j, p.id);
+      return `<td><button class="chk${c && c.by === "student" ? " by-s" : ""}" data-act="chk" data-id="${p.id}" data-j="${j}" aria-pressed="${!!c}" title="${c ? (c.by === "student" ? "학생이 체크함" : "선생님이 체크함") : ""}" aria-label="${esc(p.name)} ${esc(titles[j] || j + 1 + "번째 항목")} 체크">${c ? "✔" : ""}</button></td>`;
+    }).map((cell, j) => cell !== null ? cell
       : `<td><div class="ed" ${edAttr("")} data-k="mark" data-id="${p.id}" data-j="${j}">${esc(mk[j] || "")}</div></td>`).join("");
     const att = `<td class="att" data-act="att" data-id="${p.id}" role="button" tabindex="0" aria-label="${esc(p.name)} 출결 입력"><div class="att-chips">${attChips(ws, p.id)}</div></td>`;
     return `<tr><td class="no">${i + 1}</td><td class="nm">${esc(p.name)}</td>${marks}${att}</tr>`;
   }).join("");
-  const heads = titles.map((t, j) => `<th class="mk"><button class="ctype no-print${types[j] === "check" ? "" : " is-memo"}" data-act="coltype" data-j="${j}" title="${types[j] === "check" ? "체크리스트 칸 · 눌러서 메모 칸으로" : "메모 칸 · 눌러서 체크리스트 칸으로"}" aria-label="${j + 1}번째 칸 종류 바꾸기">${types[j] === "check" ? "✓" : "✎"}</button><div class="ed" ${edAttr("")} data-k="coltitle" data-j="${j}" aria-label="${j + 1}번째 항목 제목">${esc(t)}</div></th>`).join("");
+  const due = w.colDue || [], locked = w.colLocked || [];
+  const heads = titles.map((t, j) => {
+    const isCk = types[j] === "check";
+    const sub = isCk ? [due[j] ? `~${shortDate(due[j])}` : "", locked[j] ? "🔒" : "", `${state.settings.students.length - missingFor(ws, j).length}/${state.settings.students.length}`].filter(Boolean).join(" ") : "";
+    return `<th class="mk"><button class="ctype no-print${isCk ? "" : " is-memo"}" data-act="coltype" data-j="${j}" title="${isCk ? "체크리스트 칸 · 눌러서 설정" : "메모 칸 · 눌러서 설정"}" aria-label="${j + 1}번째 칸 설정">${isCk ? "✓" : "✎"}</button><div class="ed" ${edAttr("")} data-k="coltitle" data-j="${j}" aria-label="${j + 1}번째 항목 제목">${esc(t)}</div>${sub ? `<span class="colsub">${esc(sub)}</span>` : ""}</th>`;
+  }).join("");
   if (!rows) rows = `<tr><td colspan="${COLS + 3}" style="color:var(--paper-sub);height:40px">설정에서 학생 명단을 입력하세요</td></tr>`;
   return `<section class="bottom">
     <div class="grid-wrap"><div class="frame roster-frame"><table class="roster"><colgroup><col class="c-no"><col class="c-name">${"<col>".repeat(COLS)}<col class="c-att"></colgroup>
@@ -1235,6 +1337,7 @@ function renderSettings() {
       <p class="hint">2026–2028년 공휴일과 대체공휴일이 들어 있어요. 새로 정해지는 임시공휴일은 학교 휴일로 추가하세요.</p></div>
   </section>
   ${renderSyncPanel()}
+  ${renderStudentPagePanel()}
   <section class="panel">
     <h2>백업과 옮기기</h2>
     <p class="hint">${BACKEND ? (BACKEND.kind === "sheet" ? "구글 시트에 저장되고 있어요. 그래도 학기마다 한 번씩 파일로 내보내 두면 안전해요." : "지금은 계정에 저장되고 있어서 다른 기기에서 이 페이지를 열어도 같은 내용이 보여요.") : "지금은 이 기기(브라우저)에만 저장돼요. 다른 기기와 함께 쓰려면 위의 기기 간 동기화를 연결하세요."}</p>
@@ -1253,6 +1356,7 @@ function renderSyncPanel() {
       <p class="sync-ok">구글 시트와 연결돼 있어요</p>
       <p class="hint">이 기기에서 고친 내용은 바로 시트에 올라가고, 다른 기기에서 고친 내용은 30초쯤 안에, 또는 앱을 다시 열 때 들어와요. 같은 칸을 두 기기에서 동시에 고치면 나중에 저장한 쪽이 남아요.</p>
       <div class="row"><button class="btn primary" data-act="sync-link">다른 기기 연결하기</button><button class="btn" data-act="sync-now">지금 동기화</button><button class="btn danger" data-act="sync-off">이 기기 연결 끊기</button></div>
+      <p class="hint">Apps Script 코드를 새로 바꿔야 할 때: <button class="btn" data-act="copy-gs-update" style="padding:2px 8px">새 코드 복사</button></p>
     </section>`;
   }
   const d = ui.syncDraft || { url: (syncCfg && syncCfg.url) || "", key: (syncCfg && syncCfg.key) || "" };
@@ -1269,6 +1373,75 @@ function renderSyncPanel() {
     </ol>
     <p class="hint">시트가 비어 있으면 이 기기 내용을 올리고, 이미 내용이 있으면 시트 내용을 불러와요. 비밀번호는 이 기기와 내 구글 시트에만 저장돼요.</p>
   </section>`;
+}
+
+/* 체크리스트/메모 칸 설정: 종류 · 마감일 · 확정 · 안 한 학생 */
+function openColDialog(j) {
+  const w = curWeek(), ws = ui.ws;
+  const isCk = (w.colTypes || [])[j] === "check";
+  const title = ((w.colTitles || [])[j] || "").trim();
+  const due = (w.colDue || [])[j] || "", locked = !!(w.colLocked || [])[j];
+  const miss = missingFor(ws, j);
+  const missText = () => `${due ? `[${shortDate(due)} 마감] ` : ""}${title || `${j + 1}번째 항목`} — 아직 안 한 학생 ${miss.length}명\n${miss.map(x => `${x.no}번 ${x.p.name}`).join(", ")}`;
+  const set = fn => mutate(() => { const wk = ensureWeek(); wk.colTypes = wk.colTypes || ["memo", "memo", "memo", "memo"]; wk.colDue = wk.colDue || ["", "", "", ""]; wk.colLocked = wk.colLocked || [false, false, false, false]; fn(wk); }, ["w:" + wsKey()]);
+  openDialog(`<h2>${esc(title || `${j + 1}번째 칸`)} <span class="hint">${md(ws)}~ 주</span></h2>
+    <div class="rows"><h3>칸 종류</h3><div class="seg"><button data-x="type" data-v="check" aria-pressed="${isCk}">✓ 체크리스트</button><button data-x="type" data-v="memo" aria-pressed="${!isCk}">✎ 메모</button></div>
+      <p class="hint">체크리스트 칸은 제목을 적으면 학생·학부모 화면에 나오고, 학생이 자기 번호와 비밀번호로 체크할 수 있어요. 메모 칸은 이 화면에만 보여요.</p></div>
+    ${isCk ? `<div class="rows"><h3>마감일 (선택)</h3><input class="field" type="date" id="col-due" value="${esc(due)}" style="justify-self:start"></div>
+    <label class="row" style="gap:6px"><input type="checkbox" id="col-lock" ${locked ? "checked" : ""}> <b>확정하기</b> <span class="hint">학생이 더 이상 체크하거나 풀 수 없어요</span></label>
+    <div class="rows"><h3>아직 안 한 학생 ${miss.length}명 / ${state.settings.students.length}명</h3>
+      <div class="miss-list">${miss.length ? miss.map(x => `<span>${x.no}. ${esc(x.p.name)}</span>`).join("") : "<em>모두 했어요</em>"}</div></div>` : ""}
+    <div class="acts">${isCk && miss.length ? `<button class="btn" data-x="copy">안 한 학생 복사</button>` : ""}<button class="btn primary" data-x="close">닫기</button></div>`,
+    (dlg, close) => {
+      dlg.addEventListener("click", e => {
+        const x = e.target.closest("[data-x]"); if (!x) return;
+        if (x.dataset.x === "close") close();
+        else if (x.dataset.x === "type") { set(wk => { wk.colTypes[j] = x.dataset.v; }); close(); openColDialog(j); }
+        else if (x.dataset.x === "copy") navigator.clipboard.writeText(missText()).then(() => toast("안 한 학생 명단을 복사했어요")).catch(() => showExportText(missText(), "안 한 학생", "아래 내용을 복사해 쓰세요."));
+      });
+      const dueEl = dlg.querySelector("#col-due"), lockEl = dlg.querySelector("#col-lock");
+      dueEl && dueEl.addEventListener("change", () => set(wk => { wk.colDue[j] = dueEl.value; }));
+      lockEl && lockEl.addEventListener("change", () => { set(wk => { wk.colLocked[j] = lockEl.checked; }); toast(lockEl.checked ? "확정했어요. 학생은 더 이상 바꿀 수 없어요" : "확정을 풀었어요"); });
+    });
+}
+
+/* 학생 비밀번호 */
+const newPin = used => { let p; do { p = String(Math.floor(1000 + Math.random() * 9000)); } while (used.has(p)); used.add(p); return p; };
+function pinListText() { return `(${state.settings.className}) 학생 페이지 비밀번호\n` + state.settings.students.map((p, i) => `${i + 1}번 ${p.name}: ${p.pin || "(없음)"}`).join("\n"); }
+const studentLink = () => `${location.origin}${location.pathname.replace(/[^/]*$/, "")}student/#s=${btoa(unescape(encodeURIComponent(syncCfg.url))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}`;
+function renderStudentPagePanel() {
+  if (inClaude) return "";
+  const st = state.settings.students, noPin = st.filter(p => !p.pin).length;
+  const pins = `<div class="rows"><h3>학생 비밀번호 (4자리) ${noPin ? `<span class="sync-err" style="display:inline">· ${noPin}명 없음</span>` : ""}</h3>
+    <p class="hint">학생과 학부모가 학생 화면에서 체크할 때 쓰는 번호예요. 선생님이 정해서 알려 주세요.</p>
+    <div class="pin-grid">${st.map((p, i) => `<label><span>${i + 1}. ${esc(p.name)}</span><input class="field" inputmode="numeric" maxlength="4" data-pin="${p.id}" value="${esc(p.pin || "")}" placeholder="----" aria-label="${esc(p.name)} 비밀번호"></label>`).join("")}</div>
+    <div class="row"><button class="btn" data-act="pin-fill">${noPin === st.length ? "비밀번호 만들기" : "빈 칸만 만들기"}</button><button class="btn" data-act="pin-all">모두 새로 만들기</button><button class="btn" data-act="pin-copy">명단과 비밀번호 복사</button></div></div>`;
+  if (!(BACKEND && BACKEND.kind === "sheet")) return `<section class="panel"><h2>학생·학부모 화면</h2>
+    <p class="hint">구글 시트에 연결하면 학생·학부모용 화면 링크가 생겨요. 이번 주와 다음 주 시간표(메모·TO DO 제외)를 보고, 체크리스트를 체크하고, 반 친구들의 현황을 볼 수 있어요.</p>${pins}</section>`;
+  const old = (syncCfg.ver || 1) < 2;
+  return `<section class="panel"><h2>학생·학부모 화면</h2>
+    ${old ? `<p class="sync-err">구글 시트의 Apps Script가 예전 버전이에요. 학생 화면이 작동하려면 새 코드로 바꿔야 해요.</p>
+      <ol class="steps"><li><span>새 코드를 복사해요. (지금 비밀번호가 들어가 있어요)</span><button class="btn" data-act="copy-gs-update">새 코드 복사</button></li>
+      <li><span>구글 시트의 <b>확장 프로그램 → Apps Script</b>에서 원래 코드를 지우고 붙여넣은 뒤 저장해요.</span></li>
+      <li><span><b>배포 → 배포 관리</b> → 연필(수정) → 버전: <b>새 버전</b> → 배포. 웹 앱 주소는 그대로예요.</span></li>
+      <li><span>여기서 <b>지금 동기화</b>를 누르면 이 안내가 사라져요.</span><button class="btn" data-act="sync-now">지금 동기화</button></li></ol>` : `<p class="sync-ok">학생 화면에 게시 중${syncCfg.pubAt ? ` · 마지막 게시 ${new Date(syncCfg.pubAt).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}` : ""}</p>`}
+    <p class="hint">이번 주·다음 주 시간표(메모·TO DO·출결 제외)와 체크리스트 칸만 나가요. 다다음 주부터는 보이지 않아요. 링크를 아는 사람은 시간표와 반 체크 현황(이름 포함)을 볼 수 있고, 체크는 번호와 비밀번호로만 할 수 있어요.</p>
+    <div class="row"><button class="btn primary" data-act="student-link">학생·학부모 링크 / QR</button></div>
+    ${pins}</section>`;
+}
+function showStudentLink() {
+  const link = studentLink();
+  openDialog(`<h2>학생·학부모 화면 링크</h2>
+    <p class="hint" style="font-size:13.5px">알림장이나 가정통신문으로 보내 주세요. 이 링크에는 선생님 비밀번호가 들어 있지 않아요.</p>
+    <div id="qr-box" class="qr-box" aria-label="학생 화면 QR 코드"></div>
+    <textarea class="field" id="link-text" readonly style="min-height:90px;font-size:12px">${esc(link)}</textarea>
+    <div class="acts"><a class="btn" href="${esc(link)}" target="_blank" rel="noopener">열어 보기</a><button class="btn primary" data-x="copy">링크 복사</button></div>`,
+    (dlg, close) => {
+      dlg.addEventListener("click", e => {
+        if (e.target.closest("[data-x=copy]")) navigator.clipboard.writeText(link).then(() => toast("링크를 복사했어요")).catch(() => { const ta = dlg.querySelector("#link-text"); ta.focus(); ta.select(); toast("선택했어요. 복사하세요"); });
+      });
+      loadQR().then(Q => { const box = dlg.querySelector("#qr-box"); if (!Q || !box) { if (box) box.hidden = true; return; } new Q(box, { text: link, width: 196, height: 196, correctLevel: Q.CorrectLevel.M }); });
+    });
 }
 
 function showConnectLink() {
@@ -1451,6 +1624,7 @@ view.addEventListener("input", e => {
   if (t.dataset.sf === "color") { const s = subj(t.dataset.id); if (s) { s.color = t.value; persist(["config"]); t.closest(".subj-row").querySelector(".chip").style.cssText = chipStyle(t.value); } }
   if (t.id === "tpl-name") { const tp = tplById(ui.tplId); if (tp) { tp.name = t.value; persist(["config"]); view.querySelector(".sheet-head h1").textContent = t.value; } }
   if (t.id === "set-class") { state.settings.className = t.value; persist(["config"]); }
+  if (t.dataset.pin) { const p = state.settings.students.find(x => x.id === t.dataset.pin); if (p) { t.value = t.value.replace(/\D/g, "").slice(0, 4); p.pin = t.value; persist(["config"]); } }
   if (t.id === "sync-url" || t.id === "sync-key") { ui.syncDraft = { url: document.getElementById("sync-url").value, key: document.getElementById("sync-key").value }; }
   if (t.dataset.cat && t.dataset.cat !== "color") { state.settings.categories[Number(t.dataset.i)][t.dataset.cat] = t.value; persist(["config"]); }
   if (t.dataset.set === "sem" && t.dataset.f === "name") { state.settings.semesters[Number(t.dataset.i)].name = t.value; persist(["config"]); }
@@ -1610,9 +1784,12 @@ view.addEventListener("click", async e => {
     case "mprev": case "mnext": ui.month = new Date(ui.month.getFullYear(), ui.month.getMonth() + (a === "mprev" ? -1 : 1), 1); render(); break;
     case "mthis": ui.month = null; render(); break;
     case "sem-pick": ui.sem = Number(b.dataset.i); render(); break;
-    case "coltype": mutate(() => { const w = ensureWeek(); w.colTypes = w.colTypes || ["memo", "memo", "memo", "memo"]; const j = Number(b.dataset.j); w.colTypes[j] = w.colTypes[j] === "check" ? "memo" : "check"; }, [wk]);
-      toast(curWeek().colTypes[Number(b.dataset.j)] === "check" ? "체크리스트 칸으로 바꿨어요. 학생 칸을 누르면 체크돼요" : "메모 칸으로 바꿨어요"); break;
-    case "chk": mutate(() => { const w = ensureWeek(); w.marks = w.marks || {}; const arr = w.marks[b.dataset.id] || (w.marks[b.dataset.id] = ["", "", "", ""]); const j = Number(b.dataset.j); arr[j] = arr[j] ? "" : "✔"; }, [wk]); break;
+    case "coltype": openColDialog(Number(b.dataset.j)); break;
+    case "chk": {
+      const j = Number(b.dataset.j), w = curWeek();
+      if ((w.colLocked || [])[j]) toast("확정된 항목이에요. 선생님 화면에서는 그래도 바꿀 수 있어요");
+      pushUndo(); setCheck(ui.ws, j, b.dataset.id, !getCheck(ui.ws, j, b.dataset.id)); render(); break;
+    }
     case "cat-add": mutate(() => state.settings.categories.push({ id: "c_" + uid(), name: "새 유형", color: "#fbd3dc", topic: "", desc: "" }), ["config"]); break;
     case "cat-del": {
       const k = state.settings.categories[Number(b.dataset.i)];
@@ -1675,6 +1852,21 @@ view.addEventListener("click", async e => {
     }
     case "sync-now": await pullSheet(true); toast("동기화했어요"); render(); break;
     case "sync-link": showConnectLink(); break;
+    case "student-link": showStudentLink(); break;
+    case "copy-gs-update": {
+      const code = APPS_SCRIPT_CODE.replace("const SECRET = '여기에-비밀번호를-적으세요';", `const SECRET = ${JSON.stringify(syncCfg.key)};`);
+      navigator.clipboard.writeText(code).then(() => toast("새 코드를 복사했어요. Apps Script에 붙여넣고 새 버전으로 배포하세요")).catch(() => showExportText(code, "Apps Script 코드", "아래 코드를 모두 선택해 복사한 뒤 Apps Script에 붙여넣으세요."));
+      break;
+    }
+    case "pin-fill": case "pin-all": {
+      if (a === "pin-all" && state.settings.students.some(p => p.pin) && !(await ask("비밀번호를 모두 새로 만들까요?", "이미 알려 준 비밀번호는 더 이상 쓸 수 없게 돼요.", "새로 만들기", true))) break;
+      mutate(() => {
+        const used = new Set(a === "pin-all" ? [] : state.settings.students.map(p => p.pin).filter(Boolean));
+        state.settings.students.forEach(p => { if (a === "pin-all" || !p.pin) p.pin = newPin(used); });
+      }, ["config"]);
+      toast("비밀번호를 만들었어요. '명단과 비밀번호 복사'로 나눠 줄 목록을 만들 수 있어요"); break;
+    }
+    case "pin-copy": navigator.clipboard.writeText(pinListText()).then(() => toast("명단과 비밀번호를 복사했어요")).catch(() => showExportText(pinListText(), "학생 비밀번호", "아래 내용을 복사해 쓰세요.")); break;
     case "sync-off": {
       if (!(await ask("이 기기의 연결을 끊을까요?", "이 기기에 있는 내용은 그대로 남고, 다른 기기와 시트의 내용도 지워지지 않아요. 이후 이 기기에서 고친 내용은 공유되지 않아요.", "연결 끊기", true))) break;
       BACKEND = null; syncCfg = null; saveSyncCfg(); setSync("이 기기에 저장", ""); render(); break;
@@ -1750,6 +1942,7 @@ window.addEventListener("resize", () => { const n = isNarrow(); if (n !== lastNa
 window.addEventListener("beforeprint", () => { if (useCards()) { const v = ui.view; ui.view = "table"; render(); ui.view = v; } });
 window.addEventListener("afterprint", () => render());
 
+{ const mk = migrateChecks(); if (mk.length) { mk.forEach(k => dirty.add(k)); saveLocal(); } }
 render();
 connectCloud();
 if (syncCfg) connectSheet().then(r => {
